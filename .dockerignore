@@ -1,3 +1,4 @@
+# 基础
 .git
 .github
 .vscode
@@ -10,8 +11,7 @@ data
 *.db-wal
 .env
 .dev.vars
-workers/node_modules
-workers/.wrangler
-workers/dist
-README.md
-方案一*.md
+
+# Cloudflare 相关内容（本镜像为纯 Docker/Node + SQLite 版本，不含 Workers 部署）
+workers/
+docs/

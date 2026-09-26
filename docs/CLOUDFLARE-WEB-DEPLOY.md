@@ -233,10 +233,87 @@ wrangler 会自动按顺序应用 `migrations/` 下所有文件（0001、0002 �
 
 > 你自己的管理员账号登录后**只能进管理后台**，看不到刷题入口（纯管理账号），这是设计如此。
 
-## 第 9 步（可选）：绑自己的域名
+## 第 9 步（国内访问必做）：绑自己的域名
+
+### 为什么必须绑
+
+`*.workers.dev` 这个后缀在国内被 SNI 阻断，DNS 能解析但握手就断，浏览器直接超时。
+**不是你的部署有问题，是这个域名本身到不了。** 换成自己的域名后即可正常访问。
+
+### 硬前提：域名必须和 Worker 在「同一个 Cloudflare 账号」
+
+Cloudflare 只允许给本账号下的域名绑 Worker。跨账号不行，常见两种错误做法：
+
+| 做法 | 结果 |
+|---|---|
+| 在另一个账号里加 `CNAME ques → ques-service.asksonglh.workers.dev`（开代理） | **Error 1014 CNAME Cross-User Banned** |
+| 同上但关代理（灰云） | Host 头仍是你的域名，`workers.dev` 不认，照样打不开 |
+
+所以只有下面三条路，选一条：
+
+### 方案 A：把域名迁到 Worker 所在账号（推荐）
+
+适合这个域名没别的重要业务，或你愿意一起搬。
+
+1. 在 **Worker 所在账号** 里： Websites → **Add a site** → 输入域名 → 选 **Free**
+2. Cloudflare 会给你两个名字服务器（如 `xxx.ns.cloudflare.com`）
+3. 去**注册商**那里把域名的 NS 改成这两个（若是 Cloudflare 注册的域名，用
+   **Domain Registration → Manage Domain → Configuration → Move domain to another account**）
+4. 把旧账号里的 DNS 记录导出、在新账号里导入（**DNS → 导出 / Import**）
+5. NS 生效后（几分钟到几小时），回来做绑定
+
+### 方案 B：把 Worker 整套部署到「有域名的那个账号」（DNS 零改动）
+
+适合域名上还挂着别的服务、不想动 DNS。
+
+在那个账号里重做一遍：建 D1 → 填 `database_id` → 建表 → 设 `TOKEN_SECRET` → 部署 → 绑域名。
+题库要重新导入一次（用本地的 `题库合并.csv`，1120 题，几分钟）。
+给我那个账号的 API Token（Workers + D1 写权限）我可以代做。
+
+### 方案 C：子域名委派
+
+在旧账号给子域加 NS 记录，指向新账号的名字服务器，子域归新账号管、主域不动。
+**需要 Business 及以上套餐**，免费版用不了。
+
+### 方案 D：两边都不动 —— 在域名所在账号建一个转发 Worker
+
+适合「域名不想迁、Worker 也不想迁」。思路：在账号 B 建一个只做转发的 Worker，
+把 `ques.你的域名.com` 的请求原样转发给账号 A 的 Worker。
+
+代码在仓库里的 **`docs/reverse-proxy-worker.js`**，整段复制即可。步骤：
+
+1. 登录**有域名的那个账号** → **Workers 和 Pages → 创建 → 创建 Worker**
+   → 名字随便（如 `ques-proxy`）→ 部署
+2. 点 **编辑代码**，删掉默认内容，粘贴 `docs/reverse-proxy-worker.js` 的全部内容，
+   把第一行 `ORIGIN` 改成你自己的 `workers.dev` 地址
+3. 点 **部署**
+4. 该 Worker → **Settings → 域和路由 → 添加 → 自定义域** → 填 `ques.你的域名.com`
+
+代价要清楚：**每次访问会跑两个 Worker**，免费版每天 10 万次请求的额度相当于减半；
+延迟多一跳（一般几十毫秒）。能用，但长期看不如方案 A / B 干净。
+
+### 关于「直接把域名解析过去」
+
+结论是**不行**，三种试法都会失败：
+
+| 试法 | 结果 |
+|---|---|
+| CNAME 到 `workers.dev`，开代理（橙云） | **Error 1014 CNAME Cross-User Banned**，Cloudflare 明确禁止跨账号 CNAME |
+| CNAME 到 `workers.dev`，仅 DNS（灰云） | 请求的 Host 头还是你的域名，`workers.dev` 靠 Host/SNI 分流，认不出来，打不开 |
+| 用页面重定向 / URL 转发跳到 `workers.dev` | 跳过去之后浏览器访问的还是 `workers.dev`，国内依旧被拦，等于没换 |
+
+### 绑定操作（域名已在本账号后）
 
 **Workers 和 Pages → ques-service → Settings → 域和路由 / Domains & Routes → Add → Custom domain**
-填你的域名，Cloudflare 会自动建 DNS 记录和证书。
+填你要的子域名，例如 `ques.你的域名.com`，Cloudflare 会自动建 DNS 记录和证书，等几分钟生效。
+
+> 绑完后 `ques-service.asksonglh.workers.dev` 依然能访问，两个地址指向同一套服务。
+
+### 国内访问预期
+
+换自定义域名后国内一般可直连，但 Cloudflare 没有中国大陆节点，速度和稳定性随运营商、
+时段波动，晚高峰可能明显变慢。**如果对稳定性要求高**（要给客户/学员正式用），
+建议走 Docker 版部署到国内服务器 + 已备案域名，那条路最稳。
 
 ---
 
@@ -262,6 +339,9 @@ wrangler 会自动按顺序应用 `migrations/` 下所有文件（0001、0002 �
 | `Could not find database` / DB binding 报错 | `wrangler.jsonc` 里的 `database_id` 还是占位符，或绑定变量名不是 `DB` |
 | `no such table: question_banks` | 只跑了 `0001_init.sql`，还差 `0002_banks.sql` |
 | 构建成功但页面 404 白屏 | Root directory 没填 `workers` |
+| 页面能开、`/api/*` 全是 404 且响应体为空 | 这次部署只上传了静态资源、Worker 脚本没上去；重新 `wrangler deploy` 一次 |
+| `Error 1014 CNAME Cross-User Banned` | 想跨账号 CNAME 到 `workers.dev`，不被允许；见第 9 步 |
+| 绑自定义域名时提示找不到域名 | 域名不在当前 Cloudflare 账号，见第 9 步 |
 | 导入题库一直失败 | 看导入结果里列出的行号和原因；CSV 必须是 UTF-8 编码 |
 | 改完 `TOKEN_SECRET` 后所有人被踢下线 | 正常，密钥变了旧 Token 就失效了 |
 

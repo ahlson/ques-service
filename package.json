@@ -1,9 +1,9 @@
 {
   "name": "ques-service",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
-  "description": "在线答题系统：专项刷题 + 模拟考试 + 后台管理（支持 Docker/Node 与 Cloudflare Workers 两种部署）",
+  "description": "在线答题系统：专项刷题 + 模拟考试 + 后台管理（Docker/Node + SQLite）",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
