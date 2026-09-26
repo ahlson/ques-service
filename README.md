@@ -38,6 +38,14 @@ ques-service/
 
 ## 方式一：部署到 Cloudflare Workers
 
+两种做法，**二选一**：
+
+- **A. 网页部署（推荐）**：在 Cloudflare 后台连接 GitHub，全程点鼠标，push 即自动部署
+  → 见 **[docs/CLOUDFLARE-WEB-DEPLOY.md](docs/CLOUDFLARE-WEB-DEPLOY.md)**
+- **B. 命令行部署**：下面 1~6 步
+
+> 若用 A，仓库里的 `.github/workflows/deploy.yml` 会因未配置密钥自动跳过，不会冲突。
+
 ### 1. 准备
 
 ```bash

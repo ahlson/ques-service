@@ -1,5 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // ⚠️ 用 Cloudflare 后台「连接 GitHub」部署时，后台里的 Worker 名必须与这里的 name 一致
   "name": "ques-service",
   "main": "src/index.js",
   "compatibility_date": "2025-06-01",

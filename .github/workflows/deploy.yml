@@ -1,5 +1,7 @@
 name: Deploy to Cloudflare Workers
 
+# 说明：本工作流与 Cloudflare 后台「Workers Builds（连接 GitHub）」功能重复，二选一即可。
+# 未配置 CLOUDFLARE_API_TOKEN 时会自动跳过，不会报红叉。
 on:
   push:
     branches: [main]
@@ -8,6 +10,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 没配密钥就跳过（secrets 不能直接用于 job 级 if，先转到 env）
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    if: env.CF_TOKEN != ''
     steps:
       - uses: actions/checkout@v4
 
