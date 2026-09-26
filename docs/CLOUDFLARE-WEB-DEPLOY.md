@@ -114,17 +114,69 @@ npm install && npm run deploy:ci && npx wrangler d1 migrations apply ques-servic
 
 ---
 
-## 第 4 步：建表（执行 migrations）
+## 第 4 步：确认 D1 绑定（binding）已挂上
+
+「绑定」就是让 Worker 代码里能用 `env.DB` 访问到你的 D1 库。名字必须叫 **`DB`**，写死在代码里。
+
+### 用 Git 集成（第 3 步那套）时：不用手动加
+
+`workers/wrangler.jsonc` 里已经声明了绑定，部署时 wrangler 会自动挂上。
+部署完去这里确认一眼：
+
+**Workers 和 Pages → ques-service → Settings → Bindings（绑定）**
+应该能看到一行：**D1 database · 变量名 `DB` · ques-service-db**
+
+> 没看到？说明 `wrangler.jsonc` 里的 `database_id` 还是占位符，或者 Worker 名不一致，回到第 2 步检查。
+
+### 如果你是手动创建的 Worker：在这里加
+
+1. **Workers 和 Pages** → 点 `ques-service`
+2. **Settings → Bindings（绑定）** → **Add（添加）**
+3. 类型选 **D1 database**
+4. **Variable name（变量名）** 填：`DB` ← 必须是这个，不能改
+5. **D1 database** 下拉选：`ques-service-db`
+6. 点 **Save / Deploy**
+
+> 注意：一旦改用 Git 集成（Workers Builds）部署，云端会按 `wrangler.jsonc` 重新生成绑定，
+> 手动加的那条可能被覆盖成同名 `DB`（结果一样，不影响使用）。
+
+---
+
+## 第 5 步：建表（执行 migrations）
 
 D1 是空库，必须建表，否则页面能开但登录报 500。
+
+**要执行两个文件**（缺了第二个，题库分组功能会报错）：
+
+| 文件 | 内容 |
+|---|---|
+| `workers/migrations/0001_init.sql` | 用户、题目、考试记录、错题本、已练记录 |
+| `workers/migrations/0002_banks.sql` | 题库分组表 `question_banks`、`bank_acl`，`questions` 加 `bank_id` |
 
 ### 方法 A：在网页上直接跑 SQL（推荐，最稳）
 
 1. Cloudflare → **存储和数据库 → D1** → 点 `ques-service-db`
 2. 切到 **控制台 / Console** 标签
-3. 打开仓库里的 `workers/migrations/0001_init.sql`，**全选复制**
+3. 打开仓库里的 **`workers/migrations/d1-console-all.sql`**（这是 0001+0002 合并好的纯净版），**全选复制**
 4. 粘贴到 Console 的输入框 → 点 **Execute / Run**
 5. 看到执行成功即可
+
+> 如果之前已经手动跑成功过 `0001_init.sql`（表已存在但缺 `bank_id`），
+> 再单独执行这一行补列即可：
+> `ALTER TABLE questions ADD COLUMN bank_id;`
+> 想知道现在到底有哪些表，在 Console 里跑：
+> `SELECT name FROM sqlite_master WHERE type='table';`
+
+**⚠️ 报错 `The request is malformed: Requests without any query are not supported.`**
+
+这是因为粘贴的内容里**注释行和 SQL 语句挤在同一行**了（典型情况：`-- Migration number: 0001 -- 说明 CREATE TABLE ...`，
+整行都会被当成注释，D1 收到的实际语句数是 0）。
+
+处理办法三选一：
+
+- **用 `d1-console-all.sql` 纯净版**（不含任何注释行），一次跑完
+- 或者复制时把开头两行 `--` 注释**删掉**，从 `CREATE TABLE` 开始粘
+- 或者**分次执行**：一次只粘一条 `CREATE TABLE ... ;`
 
 ### 方法 B：让每次构建自动跑迁移
 
@@ -134,12 +186,13 @@ D1 是空库，必须建表，否则页面能开但登录报 500。
 npm install && npx wrangler d1 migrations apply ques-service-db --remote
 ```
 
-改完在 **Deployments** 里 **Retry build** 一次。以后每次 push 都会自动建表/升级表结构。
+改完在 **Deployments** 里 **Retry build** 一次。
+wrangler 会自动按顺序应用 `migrations/` 下所有文件（0001、0002 都跑），以后加新表也一样自动升级。
 （Workers Builds 会自动生成 API Token，不需要你额外配置密钥。）
 
 ---
 
-## 第 5 步：设置 TOKEN_SECRET（重要）
+## 第 6 步：设置 TOKEN_SECRET（重要）
 
 登录 Token 的签名密钥，不设就用默认值，等于门没锁。
 
@@ -156,7 +209,7 @@ npm install && npx wrangler d1 migrations apply ques-service-db --remote
 
 ---
 
-## 第 6 步：初始化管理员 + 导入题库
+## 第 7 步：初始化管理员 + 导入题库
 
 1. 打开 `https://ques-service.xxxxx.workers.dev`
 2. 因为库里还没有任何账号，登录页会显示 **「初始化」** → 创建第一个账号（**这个账号就是管理员**）
@@ -168,7 +221,7 @@ npm install && npx wrangler d1 migrations apply ques-service-db --remote
 
 ---
 
-## 第 7 步（必做）：创建学员账号并分配题库
+## 第 8 步（必做）：创建学员账号并分配题库
 
 系统**不开放自助注册**，学员账号只能由管理员创建。
 
@@ -180,7 +233,7 @@ npm install && npx wrangler d1 migrations apply ques-service-db --remote
 
 > 你自己的管理员账号登录后**只能进管理后台**，看不到刷题入口（纯管理账号），这是设计如此。
 
-## 第 8 步（可选）：绑自己的域名
+## 第 9 步（可选）：绑自己的域名
 
 **Workers 和 Pages → ques-service → Settings → 域和路由 / Domains & Routes → Add → Custom domain**
 填你的域名，Cloudflare 会自动建 DNS 记录和证书。
@@ -204,8 +257,10 @@ npm install && npx wrangler d1 migrations apply ques-service-db --remote
 | 报错 | 原因 / 处理 |
 |---|---|
 | `Worker name does not match` / 构建直接失败 | Worker 名不是 `ques-service`，改成和 `wrangler.jsonc` 的 `name` 一致 |
-| 页面能开，登录报 500 或「请先登录」 | D1 没建表，回去做第 4 步 |
-| `Could not find database` / DB binding 报错 | `wrangler.jsonc` 里的 `database_id` 还是占位符 |
+| 页面能开，登录报 500 或「请先登录」 | D1 没建表，回去做第 5 步 |
+| `Requests without any query are not supported` | 粘贴的 SQL 里注释和语句在同一行，删掉注释或改用 `d1-console-all.sql` |
+| `Could not find database` / DB binding 报错 | `wrangler.jsonc` 里的 `database_id` 还是占位符，或绑定变量名不是 `DB` |
+| `no such table: question_banks` | 只跑了 `0001_init.sql`，还差 `0002_banks.sql` |
 | 构建成功但页面 404 白屏 | Root directory 没填 `workers` |
 | 导入题库一直失败 | 看导入结果里列出的行号和原因；CSV 必须是 UTF-8 编码 |
 | 改完 `TOKEN_SECRET` 后所有人被踢下线 | 正常，密钥变了旧 Token 就失效了 |
