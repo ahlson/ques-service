@@ -16,14 +16,13 @@
     {
       "binding": "DB",
       "database_name": "ques-service-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "760d4d34-95a7-4589-b906-ef3a541ef599",
       "migrations_dir": "migrations"
     }
   ],
 
-  "vars": {
-    "TOKEN_SECRET": "please-change-this-secret"
-  },
+  // ⚠️ TOKEN_SECRET 不要写在 vars 里：wrangler 会用这里的明文覆盖掉远端 Secret。
+  // 正确做法：npx wrangler secret put TOKEN_SECRET（或后台 Settings → 变量和机密）。
 
   "observability": {
     "enabled": true
