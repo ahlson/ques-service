@@ -3,6 +3,7 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { webcrypto } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -36,47 +37,19 @@ app.use(express.json({ limit: '8mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const db = createSqlite();
-// 启动时补齐新表 / 新列，兼容老库
+// 启动时建表：全新库直接按 schema.sql 建全套，老库因 IF NOT EXISTS 不会被动到。
+// （不要只补新表——空库上 questions 不存在，后面的索引语句会直接崩。）
+db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+// 老库补列：早期版本的 questions 没有 bank_id
 {
   const cols = db.raw.prepare('PRAGMA table_info(questions)').all().map((c) => c.name);
-  if (!cols.includes('bank_id')) {
+  if (cols.length && !cols.includes('bank_id')) {
     try { db.exec('ALTER TABLE questions ADD COLUMN bank_id INTEGER'); } catch { /* 已存在则忽略 */ }
   }
 }
-db.exec(`
-  CREATE TABLE IF NOT EXISTS question_banks (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL,
-    owner_id   INTEGER NOT NULL DEFAULT 0,
-    scope      TEXT NOT NULL DEFAULT 'private' CHECK (scope IN ('public','private')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-  );
-  CREATE INDEX IF NOT EXISTS idx_banks_owner ON question_banks(owner_id);
-  CREATE TABLE IF NOT EXISTS bank_acl (
-    bank_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    PRIMARY KEY (bank_id, user_id)
-  );
-  CREATE INDEX IF NOT EXISTS idx_acl_user ON bank_acl(user_id);
-  CREATE INDEX IF NOT EXISTS idx_questions_bank ON questions(bank_id);
-  CREATE TABLE IF NOT EXISTS wrong_book (
-    user_id     INTEGER NOT NULL,
-    question_id INTEGER NOT NULL,
-    wrong_count INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (user_id, question_id)
-  );
-  CREATE INDEX IF NOT EXISTS idx_wrongbook_user ON wrong_book(user_id);
-  CREATE TABLE IF NOT EXISTS practice_seen (
-    user_id     INTEGER NOT NULL,
-    question_id INTEGER NOT NULL,
-    seen_count  INTEGER NOT NULL DEFAULT 0,
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (user_id, question_id)
-  );
-  CREATE INDEX IF NOT EXISTS idx_seen_user ON practice_seen(user_id);
-`);
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_questions_bank ON questions(bank_id)');
+} catch { /* 忽略 */ }
 
 const secret = process.env.TOKEN_SECRET || 'ques-service-secret-please-change';
 const routes = createApiRoutes();
