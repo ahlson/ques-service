@@ -4,11 +4,16 @@
 
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { webcrypto } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createApiRoutes, HttpError } from './shared/api-core.js';
 import { verifyToken } from './shared/auth.js';
 import { createSqlite } from './lib/db-sqlite.js';
+
+// Node 18 没有全局 crypto（Web Crypto 到 Node 19 才默认暴露），
+// 而 shared/ 里的密码哈希与 Token 签名全部基于 Web Crypto，缺失会让登录直接 500。
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

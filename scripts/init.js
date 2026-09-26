@@ -10,10 +10,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { webcrypto } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createSqlite } from '../lib/db-sqlite.js';
 import { hashPassword } from '../shared/auth.js';
 import { parseImportText } from '../shared/questions.js';
+
+// Node 18 没有全局 crypto，shared/auth.js 的 PBKDF2 需要它
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
