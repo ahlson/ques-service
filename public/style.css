@@ -300,6 +300,22 @@ tbody tr:hover { background: #fafbfe; }
 .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
 .chip small { opacity: .75; margin-left: 4px; }
 
+/* ---------- 勾选列表（题库授权 / 用户权限） ---------- */
+.check-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px; max-height: 240px; overflow: auto;
+  padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-2, #fafafa);
+}
+.check-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-2); cursor: pointer;
+  padding: 4px 6px; border-radius: 6px;
+}
+.check-item:hover { background: rgba(0, 0, 0, .04); }
+.check-item input { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
+.check-item input:disabled { cursor: not-allowed; }
+
 /* ---------- 登录页 ---------- */
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
   background: linear-gradient(135deg, #eef2fb 0%, #f4f6fa 60%, #e8f0fe 100%); }

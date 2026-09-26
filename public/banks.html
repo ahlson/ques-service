@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>我的题库 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="page-title">我的题库 <small>查看可用题库 · 上传自己的题库</small></div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>题库名称</th><th>题数</th><th>来源</th><th>可见范围</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="b-tbody"></tbody>
+      </table>
+    </div>
+    <div class="help-block" style="margin-top:10px">
+      「公共题库」由管理员发布，所有用户都能练；「指定用户」表示管理员只授权给了部分人；
+      你自己上传的题库默认<b>只有你和管理员可见</b>。
+    </div>
+  </div>
+
+  <div class="card mt16">
+    <h3 style="margin-bottom:12px">上传我的题库</h3>
+    <div class="help-block">
+      支持模板 CSV（表头 <code>题号,题干,A,B,C,D,E,答案,难度,题型</code>）或竖线分隔文本
+      <code>题型|题干|选项A|选项B|…|答案|解析</code>。<br>
+      上传后<b>只有你自己和管理员能看到</b>，不会出现在其他用户的题库里。大文件会自动分片并显示进度。
+    </div>
+    <div class="form-item">
+      <label>题库名称</label>
+      <input class="input" id="up-name" placeholder="例如：2026 安全生产自测题库" maxlength="60">
+    </div>
+    <div class="form-item">
+      <label>选择题库文件（CSV / TXT）</label>
+      <input type="file" class="input" id="up-file" accept=".csv,.txt">
+    </div>
+    <div class="form-item">
+      <label>或粘贴题目内容（留空则用上面的文件）</label>
+      <textarea class="textarea" id="up-text" style="min-height:140px" placeholder="题号,题干,A,B,C,D,E,答案,难度,题型"></textarea>
+    </div>
+    <button class="btn" id="up-btn">上传并导入</button>
+    <div class="import-result" id="up-result"></div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  const me = Auth.requireStudent();
+  renderHeader('banks');
+
+  let myId = me.id;
+
+  async function loadBanks() {
+    try {
+      const r = await getJSON('/api/banks');
+      const list = r.list || [];
+      document.getElementById('b-tbody').innerHTML = list.map(b => {
+        const mine = b.owner_id === myId;
+        const scopeTxt = b.scope === 'public' ? '全体用户' : (b.aclCount ? `指定 ${b.aclCount} 人` : '仅创建者');
+        const src = mine ? '<span class="tag tag-green">我上传的</span>'
+          : `<span class="tag tag-blue">${esc(b.ownerName || '管理员')}</span>`;
+        return `<tr>
+          <td><b>${esc(b.name)}</b></td>
+          <td>${b.questionCount}</td>
+          <td>${src}</td>
+          <td>${scopeTxt}</td>
+          <td style="white-space:nowrap">${fmtDate(b.created_at)}</td>
+          <td class="td-actions">${mine
+            ? `<button class="btn btn-sm btn-danger" data-del="${b.id}" data-name="${esc(b.name)}">删除</button>`
+            : '<span style="color:var(--text-3);font-size:13px">—</span>'}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="6" class="empty">暂无可用题库</td></tr>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('b-tbody').onclick = (e) => {
+    const b = e.target.closest('button[data-del]');
+    if (!b) return;
+    if (!confirmAction(`确定删除题库「${b.dataset.name}」吗？\n该题库下的所有题目以及相关的答题记录、错题本都会一并删除。`)) return;
+    delJSON('/api/banks/' + b.dataset.del)
+      .then(() => { toast('题库已删除', 'ok'); loadBanks(); })
+      .catch(ex => toast(ex.message, 'err'));
+  };
+
+  /* ---------- 上传导入（分片） ---------- */
+  const CHUNK_LINES = 150;
+
+  function splitKeepHeader(text) {
+    const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+    let headIdx = lines.findIndex(l => l.trim() !== '');
+    if (headIdx < 0) return [];
+    const header = lines[headIdx];
+    const body = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
+    if (!/题干|题型|答案/.test(header)) {
+      const chunks = [];
+      for (let i = 0; i < body.length; i += CHUNK_LINES) chunks.push(body.slice(i, i + CHUNK_LINES).join('\n'));
+      return chunks;
+    }
+    const chunks = [];
+    for (let i = 0; i < body.length; i += CHUNK_LINES) {
+      chunks.push([header, ...body.slice(i, i + CHUNK_LINES)].join('\n'));
+    }
+    return chunks;
+  }
+
+  document.getElementById('up-file').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__upText = String(reader.result || '');
+      document.getElementById('up-text').value =
+        window.__upText.length > 200000 ? `（已载入 ${f.name}，共 ${window.__upText.split(/\r?\n/).length} 行，内容较大未填入文本框，直接点「上传并导入」即可）` : window.__upText;
+      if (!document.getElementById('up-name').value.trim()) {
+        document.getElementById('up-name').value = f.name.replace(/\.(csv|txt)$/i, '');
+      }
+      toast('文件已载入', 'ok');
+    };
+    reader.readAsText(f, 'UTF-8');
+  };
+
+  document.getElementById('up-btn').onclick = async () => {
+    const btn = document.getElementById('up-btn');
+    const resultEl = document.getElementById('up-result');
+    const name = document.getElementById('up-name').value.trim();
+    const text = window.__upText || document.getElementById('up-text').value;
+    if (!name) { toast('请先填写题库名称', 'err'); return; }
+    if (!String(text).trim()) { toast('请先上传文件或粘贴题目内容', 'err'); return; }
+
+    const chunks = splitKeepHeader(String(text));
+    if (!chunks.length) { toast('没有解析到可导入的内容', 'err'); return; }
+
+    btn.disabled = true;
+    try {
+      const bank = await postJSON('/api/banks', { name });
+      let ok = 0; const bad = [];
+      for (let i = 0; i < chunks.length; i++) {
+        btn.textContent = `导入中… ${i + 1}/${chunks.length}`;
+        const r = await postJSON(`/api/banks/${bank.id}/import`, { text: chunks[i] });
+        ok += r.success || 0;
+        if (r.failed && r.failed.length) bad = bad.concat(r.failed.map(f => `第 ${f.line} 行：${f.reason}`));
+        resultEl.innerHTML = `正在导入：<b>${i + 1}/${chunks.length}</b> 片，已成功 <b style="color:var(--success)">${ok}</b> 题…`;
+      }
+      let html = `导入完成：成功 <b style="color:var(--success)">${ok}</b> 条` +
+        (bad.length ? `，失败 <b style="color:var(--danger)">${bad.length}</b> 条` : '，无失败');
+      if (bad.length) html += `<div class="fail">失败明细：\n` + bad.join('\n') + `</div>`;
+      resultEl.innerHTML = html;
+      toast(`已创建题库「${name}」，成功 ${ok} 题`, 'ok');
+      window.__upText = '';
+      document.getElementById('up-text').value = '';
+      document.getElementById('up-name').value = '';
+      loadBanks();
+    } catch (ex) {
+      resultEl.innerHTML = `<span style="color:var(--danger)">${esc(ex.message)}</span>`;
+    } finally {
+      btn.disabled = false; btn.textContent = '上传并导入';
+    }
+  };
+
+  loadBanks();
+})();
+</script>
+</body>
+</html>

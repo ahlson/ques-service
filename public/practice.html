@@ -13,6 +13,10 @@
   <!-- 阶段一：选择设置 -->
   <div class="card" id="phase-setup">
     <div class="form-item">
+      <label>选择题库</label>
+      <div class="chips" id="bank-chips"><span style="font-size:13px;color:var(--text-3)">加载中…</span></div>
+    </div>
+    <div class="form-item">
       <label>选择题型</label>
       <div class="chips" id="cat-chips"></div>
     </div>
@@ -72,16 +76,17 @@
 <script src="practice-core.js"></script>
 <script>
 (function () {
-  Auth.require();
+  Auth.requireStudent();
   renderHeader('practice');
 
-  const state = { type: '', label: '全部', count: 100, custom: false, mode: 'new' };
+  const state = { type: '', label: '全部', count: 100, custom: false, mode: 'new', bankId: 0 };
+  const bankQS = () => (state.bankId ? '&bankId=' + state.bankId : '');
 
   /* 覆盖进度：已练过 / 题库总量 */
   async function loadProgress() {
     const el = document.getElementById('progress-info');
     try {
-      const p = await getJSON('/api/practice/progress?type=' + encodeURIComponent(state.type));
+      const p = await getJSON('/api/practice/progress?type=' + encodeURIComponent(state.type) + bankQS());
       if (!p.total) {
         el.innerHTML = `<span style="color:var(--danger)">题库还是空的。</span>` +
           (Auth.user.role === 'admin'
@@ -115,6 +120,29 @@
       b.classList.add('active');
       loadProgress();
     };
+
+    // 题库（管理员授权的 + 公共的 + 自己上传的）
+    try {
+      const bs = await getJSON('/api/banks');
+      const box = document.getElementById('bank-chips');
+      if (!bs.list.length) {
+        box.innerHTML = `<span style="font-size:13px;color:var(--text-3)">暂无可用题库，请联系管理员导入并授权。</span>`;
+      } else {
+        box.innerHTML = [`<button class="chip active" data-v="0">全部题库</button>`]
+          .concat(bs.list.map(b =>
+            `<button class="chip" data-v="${b.id}">${esc(b.name)}<small>${b.questionCount}题</small></button>`))
+          .join('');
+        box.onclick = (e) => {
+          const b = e.target.closest('.chip'); if (!b) return;
+          state.bankId = Number(b.dataset.v) || 0;
+          box.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          loadProgress();
+        };
+      }
+    } catch (e) {
+      document.getElementById('bank-chips').innerHTML = '';
+    }
 
     try {
       const cats = await getJSON('/api/categories');
@@ -167,7 +195,7 @@
     PracticeCore.create({
       category: state.label,
       fetchQuestions: async () => {
-        const qs = await getJSON(`/api/practice/questions?type=${encodeURIComponent(state.type)}&limit=${state.count}&mode=${state.mode}`);
+        const qs = await getJSON(`/api/practice/questions?type=${encodeURIComponent(state.type)}&limit=${state.count}&mode=${state.mode}` + bankQS());
         if (!qs.length && state.mode === 'new') {
           toast('本类题库已经全部练完啦！想再过一轮，请把「出题顺序」切到「未做过的优先」。');
         }

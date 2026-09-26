@@ -14,7 +14,6 @@
 
     <div class="tabs" id="login-tabs">
       <button class="active" data-tab="login">登 录</button>
-      <button data-tab="register">注 册</button>
       <button data-tab="setup" id="tab-btn-setup" style="display:none">初始 化</button>
     </div>
 
@@ -29,23 +28,9 @@
       </div>
       <div class="form-error" id="li-error"></div>
       <button class="btn btn-block" type="submit" id="li-btn">登 录</button>
-    </form>
-
-    <form id="form-register" style="display:none">
-      <div class="form-item">
-        <label>用户名</label>
-        <input class="input" id="rg-username" placeholder="3~20 位字母、数字、下划线或中文">
+      <div class="help-block" style="margin-top:10px">
+        本系统不开放自助注册，账号由管理员统一创建。<br>如需要账号，请联系管理员。
       </div>
-      <div class="form-item">
-        <label>密码</label>
-        <input class="input" id="rg-password" type="password" placeholder="至少 6 位">
-      </div>
-      <div class="form-item">
-        <label>确认密码</label>
-        <input class="input" id="rg-password2" type="password" placeholder="再次输入密码">
-      </div>
-      <div class="form-error" id="rg-error"></div>
-      <button class="btn btn-block" type="submit" id="rg-btn">注册并登录</button>
     </form>
 
     <form id="form-setup" style="display:none">
@@ -82,7 +67,7 @@
     document.querySelectorAll('#login-tabs button').forEach(b => b.classList.remove('active'));
     const btn = document.querySelector(`#login-tabs button[data-tab="${tab}"]`);
     if (btn) btn.classList.add('active');
-    ['login', 'register', 'setup'].forEach(t => {
+    ['login', 'setup'].forEach(t => {
       const el = document.getElementById('form-' + t);
       if (el) el.style.display = t === tab ? '' : 'none';
     });
@@ -98,7 +83,6 @@
       if (b && b.needSetup) {
         document.getElementById('tab-btn-setup').style.display = '';
         document.querySelector('#login-tabs button[data-tab="login"]').style.display = 'none';
-        document.querySelector('#login-tabs button[data-tab="register"]').style.display = 'none';
         showTab('setup');
       }
     } catch (e) { /* 接口不可用则按普通登录页处理 */ }
@@ -150,29 +134,6 @@
     }
   };
 
-  // 注册
-  document.getElementById('form-register').onsubmit = async (e) => {
-    e.preventDefault();
-    const errEl = document.getElementById('rg-error');
-    errEl.textContent = '';
-    const username = document.getElementById('rg-username').value.trim();
-    const password = document.getElementById('rg-password').value;
-    const password2 = document.getElementById('rg-password2').value;
-    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
-    if (password !== password2) { errEl.textContent = '两次输入的密码不一致'; return; }
-    const btn = document.getElementById('rg-btn');
-    btn.disabled = true; btn.textContent = '注册中…';
-    try {
-      const r = await postJSON('/api/register', { username, password });
-      Auth.save(r.token, r.user);
-      toast('注册成功，欢迎加入！', 'ok');
-      setTimeout(() => location.href = 'index.html', 400);
-    } catch (ex) {
-      errEl.textContent = ex.message;
-    } finally {
-      btn.disabled = false; btn.textContent = '注册并登录';
-    }
-  };
 })();
 </script>
 </body>

@@ -28,6 +28,30 @@ const hasFlag = (name) => argv.includes(name);
 const db = createSqlite();
 
 /* ---------- 1. 建表 ---------- */
+// 老库补齐题库分组相关的新表/新列
+{
+  const cols = db.raw.prepare('PRAGMA table_info(questions)').all().map((c) => c.name);
+  if (!cols.includes('bank_id')) {
+    try { db.exec('ALTER TABLE questions ADD COLUMN bank_id INTEGER'); } catch { /* 已存在则忽略 */ }
+  }
+}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS question_banks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    owner_id   INTEGER NOT NULL DEFAULT 0,
+    scope      TEXT NOT NULL DEFAULT 'private' CHECK (scope IN ('public','private')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_banks_owner ON question_banks(owner_id);
+  CREATE TABLE IF NOT EXISTS bank_acl (
+    bank_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    PRIMARY KEY (bank_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_acl_user ON bank_acl(user_id);
+  CREATE INDEX IF NOT EXISTS idx_questions_bank ON questions(bank_id);
+`);
 db.exec(fs.readFileSync(path.join(ROOT, 'schema.sql'), 'utf8'));
 console.log('✓ 数据表已就绪：' + db.DB_PATH);
 

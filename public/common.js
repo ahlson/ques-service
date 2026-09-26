@@ -8,6 +8,12 @@ const Auth = {
     if (!this.token || !this.user) { location.href = 'login.html'; throw new Error('请先登录'); }
     if (role === 'admin' && this.user.role !== 'admin') { location.href = 'index.html'; throw new Error('需要管理员权限'); }
     return this.user;
+  },
+  /** 学员页面专用：管理员账号是纯管理账号，不允许进入答题相关页面 */
+  requireStudent() {
+    const u = this.require();
+    if (u.role === 'admin') { location.href = 'admin.html'; throw new Error('管理员账号为纯管理账号'); }
+    return u;
   }
 };
 
@@ -72,14 +78,18 @@ function fmtAnswer(a) {
 /* ---------- 顶部导航 ---------- */
 function renderHeader(active) {
   const u = Auth.user;
-  const links = [
-    { href: 'index.html', key: 'home', label: '首页' },
-    { href: 'practice.html', key: 'practice', label: '专项刷题' },
-    { href: 'wrong.html', key: 'wrong', label: '错题练习' },
-    { href: 'exam.html', key: 'exam', label: '模拟考试' },
-    { href: 'records.html', key: 'records', label: '我的成绩' }
-  ];
-  if (u && u.role === 'admin') links.push({ href: 'admin.html', key: 'admin', label: '管理后台' });
+  const isAdmin = !!(u && u.role === 'admin');
+  // 管理员是纯管理账号：只保留管理后台入口
+  const links = isAdmin
+    ? [{ href: 'admin.html', key: 'admin', label: '管理后台' }]
+    : [
+      { href: 'index.html', key: 'home', label: '首页' },
+      { href: 'practice.html', key: 'practice', label: '专项刷题' },
+      { href: 'wrong.html', key: 'wrong', label: '错题练习' },
+      { href: 'exam.html', key: 'exam', label: '模拟考试' },
+      { href: 'banks.html', key: 'banks', label: '我的题库' },
+      { href: 'records.html', key: 'records', label: '我的成绩' }
+    ];
   const nav = links.map(l => `<a href="${l.href}" class="${l.key === active ? 'active' : ''}">${l.label}</a>`).join('');
   const el = document.createElement('div');
   el.className = 'topbar';

@@ -13,7 +13,8 @@
   <div class="tabs" id="tabs">
     <button class="active" data-tab="stats">数据统计</button>
     <button data-tab="users">用户管理</button>
-    <button data-tab="questions">题库管理</button>
+    <button data-tab="banks">题库管理</button>
+    <button data-tab="questions">题目管理</button>
     <button data-tab="import">批量导入</button>
     <button data-tab="records">成绩管理</button>
   </div>
@@ -55,6 +56,7 @@
         <option value="user">普通用户</option>
       </select>
       <button class="btn btn-outline" id="u-search">查询</button>
+      <button class="btn" id="u-add">+ 新增用户</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -68,6 +70,21 @@
   </div>
 
   <!-- ============ 题库管理 ============ -->
+  <div id="tab-banks" style="display:none">
+    <div class="help-block" style="margin-bottom:12px">
+      「全体可见」= 所有登录用户都能练；「指定用户」= 只有勾选到的用户能练。
+      用户自己上传的题库默认只有本人可见，管理员可以在这里把它再授权给其他人。
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>题库名称</th><th>创建者</th><th>题数</th><th>可见范围</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="bk-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pager"><span class="info" id="bk-pageinfo"></span></div>
+  </div>
+
+  <!-- ============ 题目管理 ============ -->
   <div id="tab-questions" style="display:none">
     <div class="filter-bar">
       <input class="input" id="q-keyword" placeholder="搜索题干关键词">
@@ -77,12 +94,15 @@
         <option value="multiple">多选题</option>
         <option value="judge">判断题</option>
       </select>
+      <select class="select" id="q-bank">
+        <option value="">全部题库</option>
+      </select>
       <button class="btn btn-outline" id="q-search">查询</button>
       <button class="btn" id="q-add">+ 新增题目</button>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>ID</th><th>题型</th><th>题干</th><th>答案</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID</th><th>所属题库</th><th>题型</th><th>题干</th><th>答案</th><th>操作</th></tr></thead>
         <tbody id="q-tbody"></tbody>
       </table>
     </div>
@@ -110,6 +130,21 @@
         示例：<code>单选|查询数据用什么语句？|INSERT|UPDATE|SELECT|DELETE|C|SELECT 用于查询</code><br>
         说明：以 <code>#</code> 开头的行会被忽略；解析可省略；系统会自动定位答案列，因此选项多少都不会串行。<br>
         大文件会自动分片导入并显示进度。
+      </div>
+      <div class="form-item">
+        <label>题库名称（必填，导入后可按整个题库授权给用户）</label>
+        <input class="input" id="imp-name" placeholder="例如：安全生产执法题库 2025版" maxlength="60">
+      </div>
+      <div class="form-item">
+        <label>可见范围</label>
+        <div class="chips" id="imp-scope">
+          <button class="chip active" data-v="public">全体用户可见</button>
+          <button class="chip" data-v="private">只给指定用户</button>
+        </div>
+      </div>
+      <div class="form-item" id="imp-users-box" style="display:none">
+        <label>勾选可以使用这个题库的用户（不选则只有管理员能看到）</label>
+        <div class="check-list" id="imp-users"></div>
       </div>
       <div class="form-item">
         <label>上传题库文件（CSV / TXT，推荐直接上传，无需粘贴）</label>
@@ -237,6 +272,92 @@
   </div>
 </div>
 
+<!-- 新增用户弹窗 -->
+<div class="modal-mask" id="nu-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>新增用户</h3>
+      <button class="modal-close" onclick="document.getElementById('nu-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-item">
+        <label>用户名（3~20 位字母、数字、下划线或中文）</label>
+        <input class="input" id="nu-username" placeholder="例如：zhangsan" autocomplete="off">
+      </div>
+      <div class="form-item">
+        <label>初始密码（6~40 位）</label>
+        <input class="input" id="nu-password" type="text" placeholder="给用户设置一个初始密码" autocomplete="off">
+      </div>
+      <div class="form-item">
+        <label>角色</label>
+        <div class="chips" id="nu-role">
+          <button class="chip active" data-v="user">普通用户</button>
+          <button class="chip" data-v="admin">管理员（纯管理，不能答题）</button>
+        </div>
+      </div>
+      <div class="form-error" id="nu-error"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="document.getElementById('nu-mask').style.display='none'">取消</button>
+      <button class="btn" id="nu-save">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 题库授权弹窗（题库 → 哪些用户） -->
+<div class="modal-mask" id="acl-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="acl-title">题库授权</h3>
+      <button class="modal-close" onclick="document.getElementById('acl-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-item">
+        <label>题库名称</label>
+        <input class="input" id="acl-name" maxlength="60">
+      </div>
+      <div class="form-item">
+        <label>可见范围</label>
+        <div class="chips" id="acl-scope">
+          <button class="chip" data-v="public">全体用户可见</button>
+          <button class="chip" data-v="private">只给勾选的用户</button>
+        </div>
+      </div>
+      <div class="form-item" id="acl-users-box">
+        <label>勾选可以使用这个题库的用户</label>
+        <div class="check-list" id="acl-users"></div>
+      </div>
+      <div class="form-error" id="acl-error"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="document.getElementById('acl-mask').style.display='none'">取消</button>
+      <button class="btn" id="acl-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 用户权限弹窗（用户 → 哪些题库） -->
+<div class="modal-mask" id="ubk-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="ubk-title">题库权限</h3>
+      <button class="modal-close" onclick="document.getElementById('ubk-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="reset-tip" id="ubk-tip"></p>
+      <div class="form-item">
+        <label>勾选该用户可以使用的题库（标灰的是「全体可见」或他自己上传的，本来就可见）</label>
+        <div class="check-list" id="ubk-list"></div>
+      </div>
+      <div class="form-error" id="ubk-error"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="document.getElementById('ubk-mask').style.display='none'">取消</button>
+      <button class="btn" id="ubk-save">保存</button>
+    </div>
+  </div>
+</div>
+
 <script src="common.js"></script>
 <script>
 (function () {
@@ -248,9 +369,10 @@
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
-    ['stats', 'users', 'questions', 'import', 'records'].forEach(t => {
+    ['stats', 'users', 'banks', 'questions', 'import', 'records'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === b.dataset.tab ? '' : 'none';
     });
+    if (b.dataset.tab === 'banks') loadBanks();
   };
 
   /* ================= 数据统计 ================= */
@@ -300,6 +422,9 @@
           <td>${u.wrongCount}</td>
           <td class="td-actions">
             <button class="btn btn-sm btn-outline" data-reset="${u.id}" data-name="${esc(u.username)}">重置密码</button>
+            <button class="btn btn-sm btn-outline" data-perm="${u.id}" data-name="${esc(u.username)}" data-acl="${esc(u.aclBankIds || '')}">题库权限</button>
+            <button class="btn btn-sm btn-ghost" data-rolebtn="${u.id}" data-name="${esc(u.username)}" data-role="${u.role}">${u.role === 'admin' ? '取消管理员' : '设为管理员'}</button>
+            <button class="btn btn-sm btn-danger" data-udel="${u.id}" data-name="${esc(u.username)}">删除</button>
           </td>
         </tr>`).join('') || '<tr><td colspan="9" class="empty">暂无用户</td></tr>';
     } catch (e) { toast(e.message, 'err'); }
@@ -311,16 +436,110 @@
 
   /* ---------- 重置密码 ---------- */
   let resetUserId = null;
-  document.getElementById('u-tbody').onclick = (e) => {
-    const b = e.target.closest('button[data-reset]');
-    if (!b) return;
-    resetUserId = Number(b.dataset.reset);
-    document.getElementById('reset-title').textContent = `重置密码 · ${b.dataset.name}`;
-    document.getElementById('reset-tip').textContent = `你正在为「${b.dataset.name}」设置新密码，确定后该用户下次需用新密码登录。`;
-    document.getElementById('reset-pwd').value = '';
-    document.getElementById('reset-error').textContent = '';
-    document.getElementById('reset-mask').style.display = '';
-    document.getElementById('reset-pwd').focus();
+  let ubkUserId = null;
+  document.getElementById('u-tbody').onclick = async (e) => {
+    const reset = e.target.closest('button[data-reset]');
+    if (reset) {
+      resetUserId = Number(reset.dataset.reset);
+      document.getElementById('reset-title').textContent = `重置密码 · ${reset.dataset.name}`;
+      document.getElementById('reset-tip').textContent = `你正在为「${reset.dataset.name}」设置新密码，确定后该用户下次需用新密码登录。`;
+      document.getElementById('reset-pwd').value = '';
+      document.getElementById('reset-error').textContent = '';
+      document.getElementById('reset-mask').style.display = '';
+      document.getElementById('reset-pwd').focus();
+      return;
+    }
+
+    const perm = e.target.closest('button[data-perm]');
+    if (perm) { openUserBanks(perm); return; }
+
+    const rb = e.target.closest('button[data-rolebtn]');
+    if (rb) {
+      const id = Number(rb.dataset.rolebtn);
+      const toAdmin = rb.dataset.role !== 'admin';
+      const msg = toAdmin
+        ? `确定把「${rb.dataset.name}」设为管理员吗？\n管理员是纯管理账号，登录后只能进管理后台，不能刷题答题。`
+        : `确定取消「${rb.dataset.name}」的管理员权限吗？`;
+      if (!confirmAction(msg)) return;
+      try {
+        await putJSON(`/api/admin/users/${id}`, { role: toAdmin ? 'admin' : 'user' });
+        toast('角色已更新', 'ok');
+        loadUsers();
+      } catch (ex) { toast(ex.message, 'err'); }
+      return;
+    }
+
+    const udel = e.target.closest('button[data-udel]');
+    if (udel) {
+      if (!confirmAction(`确定删除用户「${udel.dataset.name}」吗？\n该用户的答题记录、错题本、自己上传的题库都会一并删除，且不可恢复。`)) return;
+      try {
+        await delJSON('/api/admin/users/' + udel.dataset.udel);
+        toast('用户已删除', 'ok');
+        loadUsers(); loadStats(); loadBanks(); loadQuestions();
+      } catch (ex) { toast(ex.message, 'err'); }
+    }
+  };
+
+  /* ---------- 用户 → 题库权限 ---------- */
+  async function openUserBanks(btn) {
+    ubkUserId = Number(btn.dataset.perm);
+    const name = btn.dataset.name;
+    const acl = new Set(String(btn.dataset.acl || '').split(',').filter(Boolean).map(Number));
+    document.getElementById('ubk-title').textContent = '题库权限 · ' + name;
+    document.getElementById('ubk-tip').textContent =
+      `勾选「${name}」可以练习的题库。标灰的是「全体可见」或他本人上传的，本来就可用。`;
+    document.getElementById('ubk-error').textContent = '';
+    try {
+      const r = await getJSON('/api/banks');
+      const banks = r.list || [];
+      document.getElementById('ubk-list').innerHTML = banks.length
+        ? banks.map(b => {
+          const inherent = b.scope === 'public' || b.owner_id === ubkUserId;
+          const checked = inherent || acl.has(b.id);
+          const why = b.scope === 'public' ? '（全体可见）' : (b.owner_id === ubkUserId ? '（他本人上传）' : '');
+          return `<label class="check-item"><input type="checkbox" value="${b.id}"${checked ? ' checked' : ''}${inherent ? ' disabled' : ''}> ${esc(b.name)} <span style="color:var(--text-3)">${b.questionCount}题 ${why}</span></label>`;
+        }).join('')
+        : '<span style="font-size:13px;color:var(--text-3)">还没有题库，请先在「批量导入」上传。</span>';
+      document.getElementById('ubk-mask').style.display = '';
+    } catch (ex) { toast(ex.message, 'err'); }
+  }
+
+  document.getElementById('ubk-save').onclick = async () => {
+    const errEl = document.getElementById('ubk-error');
+    errEl.textContent = '';
+    try {
+      const ids = [...document.querySelectorAll('#ubk-list input[type=checkbox]')]
+        .filter(i => i.checked && !i.disabled).map(i => Number(i.value));
+      await putJSON(`/api/admin/users/${ubkUserId}/banks`, { bankIds: ids });
+      toast('权限已保存', 'ok');
+      document.getElementById('ubk-mask').style.display = 'none';
+      loadUsers(); loadBanks();
+    } catch (ex) { errEl.textContent = ex.message; }
+  };
+
+  /* ---------- 新增用户 ---------- */
+  bindChips('nu-role');
+  document.getElementById('u-add').onclick = async () => {
+    document.getElementById('nu-username').value = '';
+    document.getElementById('nu-password').value = '';
+    document.getElementById('nu-error').textContent = '';
+    nuRole = 'user';
+    setChips('nu-role', 'user');
+    document.getElementById('nu-mask').style.display = '';
+    document.getElementById('nu-username').focus();
+  };
+  document.getElementById('nu-save').onclick = async () => {
+    const errEl = document.getElementById('nu-error');
+    errEl.textContent = '';
+    const username = document.getElementById('nu-username').value.trim();
+    const password = document.getElementById('nu-password').value;
+    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+    try {
+      await postJSON('/api/admin/users', { username, password, role: chipsValue('nu-role') || 'user' });
+      toast(`已创建用户 ${username}`, 'ok');
+      document.getElementById('nu-mask').style.display = 'none';
+      loadUsers(); loadStats();
+    } catch (ex) { errEl.textContent = ex.message; }
   };
   document.getElementById('reset-mask').onclick = (e) => {
     if (e.target.id === 'reset-mask') e.target.style.display = 'none';
@@ -336,7 +555,134 @@
     } catch (ex) { errEl.textContent = ex.message; }
   };
 
-  /* ================= 题库管理 ================= */
+  /* ================= 题库管理（分组 + 授权） ================= */
+  let allUsers = [];
+  let allBanks = [];
+
+  function setChips(boxId, v) {
+    document.querySelectorAll('#' + boxId + ' .chip').forEach(c => c.classList.toggle('active', c.dataset.v === v));
+  }
+  function chipsValue(boxId) {
+    const el = document.querySelector('#' + boxId + ' .chip.active');
+    return el ? el.dataset.v : '';
+  }
+  function bindChips(boxId) {
+    document.getElementById(boxId).onclick = (e) => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      setChips(boxId, b.dataset.v);
+      if (boxId === 'imp-scope') {
+        document.getElementById('imp-users-box').style.display = b.dataset.v === 'private' ? '' : 'none';
+      }
+      if (boxId === 'acl-scope') {
+        document.getElementById('acl-users-box').style.display = b.dataset.v === 'private' ? '' : 'none';
+      }
+    };
+  }
+  function checkedIds(boxId) {
+    return [...document.querySelectorAll('#' + boxId + ' input[type=checkbox]:checked')]
+      .filter(i => !i.disabled).map(i => Number(i.value));
+  }
+  function renderUserChecks(boxId, selected) {
+    const box = document.getElementById(boxId);
+    const sel = new Set((selected || []).map(Number));
+    box.innerHTML = allUsers.length
+      ? allUsers.map(u => `<label class="check-item"><input type="checkbox" value="${u.id}"${sel.has(u.id) ? ' checked' : ''}> ${esc(u.username)}${u.role === 'admin' ? '<span class="tag tag-orange">管理员</span>' : ''}</label>`).join('')
+      : '<span style="font-size:13px;color:var(--text-3)">还没有用户，请先在「用户管理」里创建。</span>';
+  }
+  async function loadUserOptions() {
+    try {
+      const r = await getJSON('/api/admin/users');
+      allUsers = r.list || [];
+    } catch (e) { allUsers = []; }
+    return allUsers;
+  }
+
+  async function loadBanks() {
+    try {
+      const r = await getJSON('/api/banks');
+      allBanks = r.list || [];
+      const totalQ = allBanks.reduce((s, b) => s + b.questionCount, 0);
+      document.getElementById('bk-pageinfo').textContent = `共 ${allBanks.length} 个题库 · ${totalQ} 道题`;
+      document.getElementById('bk-tbody').innerHTML = allBanks.map(b => `
+        <tr>
+          <td>${b.id}</td>
+          <td><b>${esc(b.name)}</b></td>
+          <td>${esc(b.ownerName || '—')}${b.owner_id === Auth.user.id ? ' <span class="tag tag-green">我</span>' : ''}</td>
+          <td>${b.questionCount}</td>
+          <td>${b.scope === 'public'
+            ? '<span class="tag tag-green">全体可见</span>'
+            : (b.aclCount ? `<span class="tag tag-blue">指定 ${b.aclCount} 人</span>` : '<span class="tag">仅创建者</span>')}</td>
+          <td style="white-space:nowrap">${fmtDate(b.created_at)}</td>
+          <td class="td-actions">
+            <button class="btn btn-sm btn-outline" data-acl="${b.id}" data-name="${esc(b.name)}" data-scope="${b.scope}">授权</button>
+            <button class="btn btn-sm btn-danger" data-bkdel="${b.id}" data-name="${esc(b.name)}" data-n="${b.questionCount}">删除</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">还没有题库，请到「批量导入」上传</td></tr>';
+
+      const sel = document.getElementById('q-bank');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">全部题库</option>' +
+        allBanks.map(b => `<option value="${b.id}">${esc(b.name)}（${b.questionCount}题）</option>`).join('');
+      sel.value = cur;
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  /* ---------- 题库：授权 / 删除 ---------- */
+  let aclBankId = null;
+  let aclScope = 'private';
+
+  document.getElementById('bk-tbody').onclick = async (e) => {
+    const acl = e.target.closest('button[data-acl]');
+    const del = e.target.closest('button[data-bkdel]');
+    if (del) {
+      const name = del.dataset.name, n = del.dataset.n;
+      if (!confirmAction(`确定删除题库「${name}」吗？\n该题库下的 ${n} 道题以及相关答题记录、错题本都会一并删除。`)) return;
+      try {
+        await delJSON('/api/banks/' + del.dataset.bkdel);
+        toast('题库已删除', 'ok');
+        loadBanks(); loadQuestions(); loadStats();
+      } catch (ex) { toast(ex.message, 'err'); }
+      return;
+    }
+    if (acl) {
+      aclBankId = Number(acl.dataset.acl);
+      aclScope = acl.dataset.scope || 'private';
+      document.getElementById('acl-title').textContent = '题库授权 · ' + acl.dataset.name;
+      document.getElementById('acl-name').value = acl.dataset.name;
+      document.getElementById('acl-error').textContent = '';
+      await loadUserOptions();
+      try {
+        const d = await getJSON(`/api/admin/banks/${aclBankId}/users`);
+        renderUserChecks('acl-users', d.list.filter(u => u.allowed).map(u => u.id));
+      } catch (ex) { renderUserChecks('acl-users', []); }
+      setChips('acl-scope', aclScope);
+      document.getElementById('acl-users-box').style.display = aclScope === 'private' ? '' : 'none';
+      document.getElementById('acl-mask').style.display = '';
+    }
+  };
+
+  bindChips('acl-scope');
+
+  document.getElementById('acl-save').onclick = async () => {
+    const errEl = document.getElementById('acl-error');
+    errEl.textContent = '';
+    const name = document.getElementById('acl-name').value.trim();
+    if (!name) { errEl.textContent = '题库名称不能为空'; return; }
+    try {
+      const scope = chipsValue('acl-scope') || 'private';
+      await putJSON(`/api/admin/banks/${aclBankId}`, {
+        name, scope, userIds: scope === 'private' ? checkedIds('acl-users') : []
+      });
+      toast('已保存', 'ok');
+      document.getElementById('acl-mask').style.display = 'none';
+      loadBanks();
+    } catch (ex) { errEl.textContent = ex.message; }
+  };
+  ['acl-mask', 'nu-mask', 'ubk-mask'].forEach(id => {
+    document.getElementById(id).onclick = (e) => { if (e.target.id === id) e.target.style.display = 'none'; };
+  });
+
+  /* ================= 题目管理 ================= */
   const qState = { page: 1, total: 0 };
   const Q_PAGESIZE = 10;
 
@@ -344,21 +690,23 @@
     try {
       const kw = document.getElementById('q-keyword').value.trim();
       const type = document.getElementById('q-type').value;
+      const bank = document.getElementById('q-bank').value;
       const r = await getJSON(`/api/admin/questions?page=${qState.page}&pageSize=${Q_PAGESIZE}` +
-        `&keyword=${encodeURIComponent(kw)}&type=${type}`);
+        `&keyword=${encodeURIComponent(kw)}&type=${type}&bankId=${bank}`);
       qState.total = r.total;
       document.getElementById('q-pageinfo').textContent = `共 ${r.total} 题 · 第 ${r.page} / ${Math.max(1, Math.ceil(r.total / Q_PAGESIZE))} 页`;
       document.getElementById('q-tbody').innerHTML = r.list.map(q => `
         <tr>
           <td>${q.id}</td>
+          <td>${esc(q.bankName || '未分组')}</td>
           <td><span class="tag tag-blue">${TYPE_NAME[q.type]}</span></td>
-          <td style="max-width:340px">${esc(q.stem.length > 40 ? q.stem.slice(0, 40) + '…' : q.stem)}</td>
+          <td style="max-width:320px">${esc(q.stem.length > 40 ? q.stem.slice(0, 40) + '…' : q.stem)}</td>
           <td><b>${fmtAnswer(q.answer)}</b></td>
           <td class="td-actions">
             <button class="btn btn-sm btn-outline" data-edit='${encodeURIComponent(JSON.stringify(q))}'>编辑</button>
             <button class="btn btn-sm btn-danger" data-del="${q.id}">删除</button>
           </td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">暂无题目，请点击「新增题目」或使用「批量导入」</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="6" class="empty">暂无题目，请点击「新增题目」或使用「批量导入」</td></tr>';
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -500,20 +848,31 @@
   };
 
   const impBtn = document.getElementById('imp-btn');
+  bindChips('imp-scope');
+
   impBtn.onclick = async () => {
     const text = window.__impText || document.getElementById('imp-text').value;
     const resultEl = document.getElementById('imp-result');
-    if (!text.trim()) { toast('请先粘贴题目内容或上传文件', 'err'); return; }
+    if (!String(text).trim()) { toast('请先粘贴题目内容或上传文件', 'err'); return; }
 
-    const chunks = splitKeepHeader(text);
+    const bankName = document.getElementById('imp-name').value.trim();
+    if (!bankName) { toast('请先填写题库名称', 'err'); return; }
+
+    const chunks = splitKeepHeader(String(text));
     if (!chunks.length) { toast('没有解析到可导入的内容', 'err'); return; }
 
     impBtn.disabled = true;
     let ok = 0, bad = [];
     try {
+      // 先建题库（同时确定可见范围和授权用户），后续分片都导入到这个题库
+      const bank = await postJSON('/api/banks', {
+        name: bankName,
+        scope: chipsValue('imp-scope') || 'public',
+        userIds: (chipsValue('imp-scope') || 'public') === 'private' ? checkedIds('imp-users') : []
+      });
       for (let i = 0; i < chunks.length; i++) {
         impBtn.textContent = `导入中… ${i + 1}/${chunks.length}`;
-        const r = await postJSON('/api/admin/questions/import', { text: chunks[i] });
+        const r = await postJSON('/api/admin/questions/import', { text: chunks[i], bankId: bank.id });
         ok += r.success || 0;
         if (r.failed && r.failed.length) bad = bad.concat(r.failed.map(f => `第 ${f.line} 行：${f.reason}`));
         resultEl.innerHTML = `正在导入：<b>${i + 1}/${chunks.length}</b> 片，已成功 <b style="color:var(--success)">${ok}</b> 题…`;
@@ -525,7 +884,9 @@
       toast(`成功导入 ${ok} 道题`, 'ok');
       window.__impText = '';
       document.getElementById('imp-text').value = '';
+      document.getElementById('imp-name').value = '';
       loadQuestions();
+      loadBanks();
       loadStats();
     } catch (ex) {
       resultEl.innerHTML = `<span style="color:var(--danger)">${esc(ex.message)}</span>`;
@@ -610,7 +971,8 @@
 
   /* ================= 初始化 ================= */
   loadStats();
-  loadUsers();
+  loadUsers().then(() => renderUserChecks('imp-users', []));
+  loadBanks();
   loadQuestions();
   loadRecords();
 })();

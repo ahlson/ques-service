@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS questions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  bank_id    INTEGER,                 -- 所属题库（NULL = 未分组，视为全体可见）
   category   TEXT NOT NULL,
   type       TEXT NOT NULL DEFAULT 'single' CHECK (type IN ('single','multiple','judge')),
   stem       TEXT NOT NULL,
@@ -25,6 +26,27 @@ CREATE TABLE IF NOT EXISTS questions (
 );
 CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category);
 CREATE INDEX IF NOT EXISTS idx_questions_type    ON questions(type);
+CREATE INDEX IF NOT EXISTS idx_questions_bank    ON questions(bank_id);
+
+-- 题库：一次导入即一个题库，可整体授权给指定用户
+CREATE TABLE IF NOT EXISTS question_banks (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  owner_id   INTEGER NOT NULL,        -- 创建者（管理员或用户）
+  scope      TEXT NOT NULL DEFAULT 'private' CHECK (scope IN ('public','private')),
+  -- public  = 所有登录用户可见
+  -- private = 仅创建者 + bank_acl 里被授权的用户 + 管理员可见
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_banks_owner ON question_banks(owner_id);
+
+-- 题库授权：哪些用户可以使用这个题库
+CREATE TABLE IF NOT EXISTS bank_acl (
+  bank_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  PRIMARY KEY (bank_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_acl_user ON bank_acl(user_id);
 
 CREATE TABLE IF NOT EXISTS exam_records (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
