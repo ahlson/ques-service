@@ -9,6 +9,7 @@ data/
 workers/node_modules/
 workers/.wrangler/
 workers/dist/
+workers/wrangler.deploy.jsonc
 
 .env
 .dev.vars

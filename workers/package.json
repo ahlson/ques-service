@@ -11,7 +11,9 @@
     "d1:migrate": "wrangler d1 migrations apply ques-service-db --remote",
     "d1:migrate:local": "wrangler d1 migrations apply ques-service-db --local",
     "secret": "wrangler secret put TOKEN_SECRET",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "gen:config": "node scripts/gen-wrangler.js",
+    "deploy:ci": "node scripts/gen-wrangler.js && wrangler deploy --config wrangler.deploy.jsonc"
   },
   "dependencies": {
     "hono": "^4.6.14"

@@ -25,23 +25,64 @@
 
 ## 第 2 步：把 Database ID 填进仓库
 
-1. GitHub 打开 `ahlson/ques-service` → 进入 `workers/wrangler.jsonc`
-2. 右上角铅笔图标 **Edit**
-3. 把这一行：
+> **先说清楚一件事：Database ID 不是密钥。**
+> 它只是你账号下那个 D1 数据库的「编号」（一串 UUID），别人拿到它**读不到你的数据** ——
+> 要读写 D1 必须通过 Cloudflare 账号登录或持有 API Token。
+> 所以把它写进仓库，安全性上问题不大（GitHub 上大量公开项目都这么干）。
+> 真正在意的应该是 `TOKEN_SECRET`（第 5 步），那个走 Secret，不进仓库。
+>
+> 如果就是不想让它出现在仓库里，用 **做法 B**。
+
+### 做法 A：直接在 GitHub 网页改文件（推荐，最简单）
+
+1. 浏览器打开 `https://github.com/ahlson/ques-service`
+2. 依次点进 `workers` 文件夹 → 点 `wrangler.jsonc`
+3. 右上角 **铅笔图标（Edit this file）** —— 就在「Raw / Blame」那排按钮旁边
+4. 找到这一行：
 
    ```
    "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
    ```
 
-   改成（粘贴第 1 步复制的 ID）：
+   把引号里的占位符换成第 1 步复制的 ID：
 
    ```
    "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
    ```
 
-4. 点 **Commit changes**（直接提交到 main 即可）
+5. 页面拉到最下面 → **Commit changes** → 直接提交到 `main`
+   （这一步也可以在你电脑上改完 `git push`，效果完全一样）
 
-> 这一步会触发一次构建。如果这时还没连仓库，不会有任何反应，正常。
+> 提交会触发一次构建；如果这时 Cloudflare 还没连仓库，不会有任何反应，属于正常。
+
+### 做法 B：不写进仓库，用 Secret 注入（可选）
+
+仓库里已经带了一个生成脚本 `workers/scripts/gen-wrangler.js`：
+它读环境变量 `D1_DATABASE_ID`，生成一个**不会被提交**的 `wrangler.deploy.jsonc`，再用它部署。
+
+配置步骤：
+
+1. Cloudflare → **Workers 和 Pages** → `ques-service`
+   → **Settings → 变量和机密 / Variables and Secrets** → **Add**
+2. 类型选 **Secret（加密）**：Name 填 `D1_DATABASE_ID`，Value 填第 1 步的 Database ID
+3. 再到 **Settings → Build** ，把 **Deploy command** 改成：
+
+   ```
+   npm run deploy:ci
+   ```
+
+   （等价写法：`node scripts/gen-wrangler.js && npx wrangler deploy --config wrangler.deploy.jsonc`）
+
+4. 保存后 **Retry build** 一次
+
+这样仓库里的 `wrangler.jsonc` 始终保留占位符，真实 ID 只存在 Cloudflare 上。
+第 4 步「建表」如果也想自动跑，把 Build command 改成：
+
+```
+npm install && npm run deploy:ci && npx wrangler d1 migrations apply ques-service-db --remote
+```
+
+> 没配 `D1_DATABASE_ID` 时脚本会直接报错退出并提示原因，不会带着占位符部署出一个坏版本。
 
 ---
 

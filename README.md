@@ -86,6 +86,10 @@ npm run d1:create
 
 命令会输出一段 `database_id`，把它填回 `workers/wrangler.jsonc` 的 `database_id` 字段里。
 
+> Database ID 只是资源编号，不是密钥（读写 D1 仍需 Cloudflare 账号或 API Token），写进仓库没有安全问题。
+> 若确实不想提交到仓库，可用 `D1_DATABASE_ID=<id> npm run gen:config` 生成不入库的
+> `wrangler.deploy.jsonc`，再用 `npm run deploy:ci` 部署，详见 `docs/CLOUDFLARE-WEB-DEPLOY.md` 第 2 步做法 B。
+
 ### 3. 建表
 
 ```bash
