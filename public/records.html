@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>我的成绩 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="page-title">我的成绩 <small>历次刷题与考试记录</small></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th><th>模式</th><th>分类</th><th>得分</th><th>正确 / 总数</th><th>用时</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="tb-records"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty-tip" style="display:none">
+    还没有答题记录，去<a href="practice.html">刷题</a>或<a href="exam.html">考试</a>吧
+  </div>
+</div>
+
+<!-- 成绩明细弹窗 -->
+<div class="modal-mask" id="detail-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="detail-title">成绩明细</h3>
+      <button class="modal-close" onclick="document.getElementById('detail-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  Auth.require();
+  renderHeader('records');
+
+  const tb = document.getElementById('tb-records');
+
+  async function load() {
+    try {
+      const list = await getJSON('/api/records/my');
+      if (!list.length) {
+        document.querySelector('.table-wrap').style.display = 'none';
+        document.getElementById('empty-tip').style.display = '';
+        return;
+      }
+      tb.innerHTML = list.map(r => `
+        <tr>
+          <td style="white-space:nowrap">${fmtDate(r.created_at)}</td>
+          <td><span class="tag ${r.mode === 'exam' ? 'tag-blue' : 'tag-green'}">${MODE_NAME[r.mode]}</span></td>
+          <td>${esc(r.category)}</td>
+          <td><b style="color:${r.score >= 60 ? 'var(--success)' : 'var(--danger)'}">${r.score}</b></td>
+          <td>${r.correct_count} / ${r.total_count}</td>
+          <td style="white-space:nowrap">${fmtTime(r.duration_sec)}${r.overtime ? ' <span class="tag tag-red">超时</span>' : ''}</td>
+          <td class="td-actions"><button class="btn btn-sm btn-outline" data-id="${r.id}">明细</button></td>
+        </tr>`).join('');
+      tb.onclick = (e) => {
+        const b = e.target.closest('button[data-id]');
+        if (b) showDetail(Number(b.dataset.id));
+      };
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function showDetail(id) {
+    try {
+      const d = await getJSON(`/api/records/my/${id}`);
+      document.getElementById('detail-title').innerHTML =
+        `${MODE_NAME[d.mode]} · ${esc(d.category)} · <span style="color:${d.score >= 60 ? 'var(--success)' : 'var(--danger)'}">${d.score} 分</span>
+         <small style="font-weight:400;color:var(--text-3)">（${fmtDate(d.created_at)}）</small>`;
+      document.getElementById('detail-body').innerHTML = d.details.map((x, i) => `
+        <div class="detail-item">
+          <span class="tag ${x.is_correct ? 'tag-green' : 'tag-red'}">${x.is_correct ? '✓ 正确' : '✗ 错误'}</span>
+          <span class="tag tag-blue">${TYPE_NAME[x.type]}</span>
+          <div class="q">${i + 1}. ${esc(x.stem)}</div>
+          <div class="ansline">
+            <span>我的答案：<b class="${x.is_correct ? 'ok' : 'wrong'}">${fmtAnswer(x.user_answer)}</b></span>
+            <span>正确答案：<b class="ok">${fmtAnswer(x.answer)}</b></span>
+          </div>
+          ${x.analysis ? `<div class="analysis">${esc(x.analysis)}</div>` : ''}
+        </div>`).join('');
+      document.getElementById('detail-mask').style.display = '';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('detail-mask').onclick = (e) => {
+    if (e.target.id === 'detail-mask') e.target.style.display = 'none';
+  };
+
+  load();
+  // 支持从考试页跳转直接打开明细：records.html?id=xx
+  const qid = new URLSearchParams(location.search).get('id');
+  if (qid) load().then(() => showDetail(Number(qid)));
+})();
+</script>
+</body>
+</html>

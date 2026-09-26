@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>错题练习 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container" id="app">
+  <div class="page-title">错题练习 <small>专攻易错点 · 答对一次即移出错题本</small></div>
+
+  <!-- 阶段一：设置 -->
+  <div class="card" id="phase-setup">
+    <div class="help-block">
+      系统自动记录你答错的题目（<b>答对一次即移出错题本</b>）。可按「错题次数」筛选，优先攻克反复出错的题。
+    </div>
+    <div class="form-item">
+      <label>题型</label>
+      <div class="chips" id="type-chips">
+        <button class="chip active" data-v="">全部</button>
+        <button class="chip" data-v="single">单选题</button>
+        <button class="chip" data-v="multiple">多选题</button>
+        <button class="chip" data-v="judge">判断题</button>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>只练「错题次数」大于（留 0 表示全部错题）</label>
+      <div class="flex" style="gap:10px;align-items:center">
+        <input type="number" id="min-wrong" min="0" max="999" value="0" style="max-width:120px">
+        <span style="font-size:13px;color:var(--text-2)">次</span>
+        <button class="btn btn-sm" id="btn-filter">筛选</button>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>满足条件的错题（共 <b id="wrong-total">0</b> 道）</label>
+      <div class="wrong-list" id="wrong-list"></div>
+    </div>
+    <div class="form-item">
+      <label>本次练习题数</label>
+      <input type="number" id="practice-count" min="1" max="200" value="20" style="max-width:140px">
+      <span style="font-size:13px;color:var(--text-3)" id="count-hint"></span>
+    </div>
+    <button class="btn" id="btn-start">开始练习</button>
+  </div>
+
+  <!-- 阶段二：答题（复用 practice-core 引擎） -->
+  <div id="phase-doing" style="display:none">
+    <div class="card">
+      <div class="qa-progress">
+        <span style="font-size:13px;color:var(--text-2)" id="prog-text"></span>
+        <div class="bar"><i id="prog-bar"></i></div>
+        <span style="font-size:13px;color:var(--text-3)" id="prog-time">00:00</span>
+      </div>
+      <div class="q-head" id="q-head"></div>
+      <div class="q-stem" id="q-stem"></div>
+      <div class="opts" id="q-opts"></div>
+      <div id="q-analysis"></div>
+      <div class="flex right mt16">
+        <button class="btn btn-ghost" id="btn-quit">结束练习</button>
+        <button class="btn" id="btn-next" style="display:none">下一题 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 阶段三：结果 -->
+  <div id="phase-done" style="display:none">
+    <div class="card score-hero">
+      <div class="score" id="done-score">--</div>
+      <div class="sub" id="done-sub"></div>
+    </div>
+    <div class="flex" style="justify-content:center">
+      <button class="btn btn-outline" onclick="location.reload()">再来一轮</button>
+      <a class="btn" href="records.html">查看我的成绩</a>
+    </div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script src="practice-core.js"></script>
+<script>
+(function () {
+  Auth.require();
+  renderHeader('wrong');
+
+  let allWrong = []; // 当前筛选结果（含 wrongCount）
+  let curType = '';
+
+  document.getElementById('type-chips').onclick = (e) => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    curType = b.dataset.v;
+    document.querySelectorAll('#type-chips .chip').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    loadWrong();
+  };
+  document.getElementById('btn-filter').onclick = loadWrong;
+
+  async function loadWrong() {
+    const min = Math.max(0, Number(document.getElementById('min-wrong').value) || 0);
+    try {
+      const data = await getJSON(`/api/wrong-questions?minWrong=${min}&type=${encodeURIComponent(curType)}&limit=2000`);
+      allWrong = data.list;
+      document.getElementById('wrong-total').textContent = data.total;
+      renderList();
+    } catch (e) {
+      document.getElementById('wrong-list').innerHTML = `<p class="empty">${esc(e.message)}</p>`;
+    }
+  }
+
+  function renderList() {
+    const box = document.getElementById('wrong-list');
+    const cnt = allWrong.length;
+    const max = Math.max(1, cnt);
+    const cntInput = document.getElementById('practice-count');
+    cntInput.max = Math.min(200, max);
+    cntInput.value = Math.min(20, cnt) || 1;
+    document.getElementById('count-hint').textContent =
+      cnt ? `（共 ${cnt} 道，最多练 ${Math.min(200, cnt)} 道）` : '（暂无符合条件的错题）';
+    if (!cnt) {
+      box.innerHTML = `<p class="empty">暂无符合条件的错题，去刷刷题吧～</p>`;
+      return;
+    }
+    box.innerHTML = allWrong.slice(0, 200).map(q =>
+      `<div class="wrong-item">
+         <span class="tag tag-blue wrong-type">${TYPE_NAME[q.type]}</span>
+         <span class="wrong-stem" title="${esc(q.stem)}">${esc(q.stem)}</span>
+         <span class="wrong-count">错 ${q.wrongCount} 次</span>
+       </div>`).join('');
+  }
+
+  document.getElementById('btn-start').onclick = () => {
+    if (!allWrong.length) { toast('暂无错题可练，先去刷题或考试吧', 'err'); return; }
+    document.getElementById('phase-setup').style.display = 'none';
+    const n = Math.min(Math.max(1, Number(document.getElementById('practice-count').value) || 1), allWrong.length);
+    // 从当前筛选结果中随机抽取 n 道
+    const pool = allWrong.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const picked = pool.slice(0, n);
+    PracticeCore.create({
+      category: '错题练习',
+      fetchQuestions: () => Promise.resolve(picked)
+    }).start();
+  };
+
+  loadWrong();
+})();
+</script>
+</body>
+</html>

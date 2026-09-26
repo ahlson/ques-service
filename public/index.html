@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>首页 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <h1>你好，<span id="hi-name">同学</span> 👋</h1>
+    <p>选择一种模式开始今天的练习吧</p>
+  </div>
+
+  <div class="mode-grid">
+    <a class="mode-card" href="practice.html">
+      <div class="ico" style="background:var(--primary-light);color:var(--primary)">✍</div>
+      <h3>专项刷题</h3>
+      <p>按题型选题，边做边看答案与解析，逐题巩固薄弱知识点</p>
+      <span class="go">开始刷题 →</span>
+    </a>
+    <a class="mode-card" href="wrong.html">
+      <div class="ico" style="background:#fdeaea;color:var(--danger)">✕</div>
+      <h3>错题练习</h3>
+      <p>专攻答错的题，可按「错题次数」筛选，优先攻克反复出错的题</p>
+      <span class="go" id="wrong-badge">进入错题本 →</span>
+    </a>
+    <a class="mode-card" href="exam.html">
+      <div class="ico" style="background:#fef3e2;color:var(--warning)">⏱</div>
+      <h3>模拟考试</h3>
+      <p>随机组卷、限时作答、自动判分，检验真实水平</p>
+      <span class="go">参加考试 →</span>
+    </a>
+  </div>
+
+  <div class="card mt16" id="stats-card" style="display:none">
+    <h3 style="margin-bottom:12px">学习概览</h3>
+    <div class="stat-cards" id="my-stats"></div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  Auth.require();
+  renderHeader('home');
+  document.getElementById('hi-name').textContent = Auth.user.username;
+
+  (async () => {
+    try {
+      const records = await getJSON('/api/records/my');
+      if (records.length) {
+        const total = records.length;
+        const avg = (records.reduce((s, r) => s + r.score, 0) / total).toFixed(1);
+        const best = Math.max(...records.map(r => r.score));
+        const totalQ = records.reduce((s, r) => s + r.total_count, 0);
+        document.getElementById('my-stats').innerHTML = `
+          <div class="stat-card"><div class="num">${total}</div><div class="lbl">已完成答题（次）</div></div>
+          <div class="stat-card"><div class="num">${avg}</div><div class="lbl">平均分</div></div>
+          <div class="stat-card"><div class="num">${best}</div><div class="lbl">最高分</div></div>
+          <div class="stat-card"><div class="num">${totalQ}</div><div class="lbl">累计做题（道）</div></div>`;
+        document.getElementById('stats-card').style.display = '';
+      }
+      // 错题本数量
+      try {
+        const wb = await getJSON('/api/wrong-questions?minWrong=0&limit=1');
+        const n = wb.total || 0;
+        document.getElementById('wrong-badge').textContent = n > 0 ? `我的错题 ${n} 道 →` : '暂无错题 →';
+      } catch (e) { /* 静默 */ }
+    } catch (e) { /* 静默 */ }
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>专项刷题 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container" id="app">
+  <div class="page-title">专项刷题 <small>按题型练习 · 实时判分 · 附解析</small></div>
+
+  <!-- 阶段一：选择设置 -->
+  <div class="card" id="phase-setup">
+    <div class="form-item">
+      <label>选择题型</label>
+      <div class="chips" id="cat-chips"></div>
+    </div>
+    <div class="form-item">
+      <label>题目数量</label>
+      <div class="chips" id="count-chips"></div>
+      <div class="flex mt8" id="custom-count-row" style="display:none">
+        <input type="number" id="custom-count" min="1" max="200" value="100" style="max-width:140px">
+        <span style="font-size:13px;color:var(--text-2);align-self:center">题（1~200）</span>
+      </div>
+    </div>
+    <div class="form-item">
+      <label>出题顺序</label>
+      <div class="chips" id="mode-chips">
+        <button class="chip active" data-v="new">只出没做过的新题（推荐）</button>
+        <button class="chip" data-v="smart">未做过的优先（补足题量）</button>
+        <button class="chip" data-v="random">完全随机（旧版）</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-3);margin-top:8px" id="progress-info"></p>
+    </div>
+    <button class="btn" id="btn-start">开始刷题</button>
+  </div>
+
+  <!-- 阶段二：答题（由 practice-core 引擎驱动） -->
+  <div id="phase-doing" style="display:none">
+    <div class="card">
+      <div class="qa-progress">
+        <span style="font-size:13px;color:var(--text-2)" id="prog-text"></span>
+        <div class="bar"><i id="prog-bar"></i></div>
+        <span style="font-size:13px;color:var(--text-3)" id="prog-time">00:00</span>
+      </div>
+      <div class="q-head" id="q-head"></div>
+      <div class="q-stem" id="q-stem"></div>
+      <div class="opts" id="q-opts"></div>
+      <div id="q-analysis"></div>
+      <div class="flex right mt16">
+        <button class="btn btn-ghost" id="btn-quit">结束练习</button>
+        <button class="btn" id="btn-next" style="display:none">下一题 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 阶段三：结果 -->
+  <div id="phase-done" style="display:none">
+    <div class="card score-hero">
+      <div class="score" id="done-score">--</div>
+      <div class="sub" id="done-sub"></div>
+    </div>
+    <div class="flex" style="justify-content:center">
+      <button class="btn btn-outline" onclick="location.reload()">再来一轮</button>
+      <a class="btn" href="records.html">查看我的成绩</a>
+    </div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script src="practice-core.js"></script>
+<script>
+(function () {
+  Auth.require();
+  renderHeader('practice');
+
+  const state = { type: '', label: '全部', count: 100, custom: false, mode: 'new' };
+
+  /* 覆盖进度：已练过 / 题库总量 */
+  async function loadProgress() {
+    const el = document.getElementById('progress-info');
+    try {
+      const p = await getJSON('/api/practice/progress?type=' + encodeURIComponent(state.type));
+      if (!p.total) {
+        el.innerHTML = `<span style="color:var(--danger)">题库还是空的。</span>` +
+          (Auth.user.role === 'admin'
+            ? `请先到 <a href="admin.html" style="color:var(--primary)">管理后台 → 批量导入</a> 上传题库 CSV。`
+            : `请联系管理员导入题库。`);
+        return;
+      }
+      const base = `本类题库共 ${p.total} 题，你已练过 ${p.done} 题（${p.percent}%），还有 ${p.unseen} 题没练到。`;
+      let tip;
+      if (p.unseen === 0) {
+        tip = '全部题目都练过了，想再过一轮请把「出题顺序」切到「未做过的优先」或「完全随机」。';
+      } else if (state.mode === 'new') {
+        tip = `本轮只出这 ${p.unseen} 道新题里的一部分（最多 ${state.count} 道），不会重复出现做过的题。`;
+      } else if (state.mode === 'smart') {
+        tip = `会先出这 ${p.unseen} 道新题；新题不够 ${state.count} 道时，才用做过的题补足。`;
+      } else {
+        tip = '每轮都是全库随机，可能抽到做过的题。';
+      }
+      el.textContent = base + tip;
+    } catch (e) {
+      el.textContent = '';
+    }
+  }
+
+  /* ===== 阶段一：设置 ===== */
+  (async () => {
+    document.getElementById('mode-chips').onclick = (e) => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      state.mode = b.dataset.v;
+      document.querySelectorAll('#mode-chips .chip').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      loadProgress();
+    };
+
+    try {
+      const cats = await getJSON('/api/categories');
+      document.getElementById('cat-chips').innerHTML = !cats.length
+        ? `<p class="empty">题库为空，请管理员先到「管理后台 → 批量导入」上传题库 CSV。</p>`
+        : [`<button class="chip active" data-v="" data-label="全部">全部</button>`]
+          .concat(cats.map(c =>
+            `<button class="chip" data-v="${esc(c.type)}" data-label="${esc(c.category)}">${esc(c.category)}<small>${c.count}题</small></button>`))
+          .join('');
+      document.getElementById('cat-chips').onclick = (e) => {
+        const b = e.target.closest('.chip'); if (!b) return;
+        state.type = b.dataset.v;
+        state.label = b.dataset.label;
+        document.querySelectorAll('#cat-chips .chip').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        loadProgress();
+      };
+      loadProgress();
+    } catch (e) {
+      document.getElementById('cat-chips').innerHTML = `<p class="empty">${esc(e.message)}</p>`;
+    }
+
+    const counts = [10, 20, 30, 50, 100];
+    document.getElementById('count-chips').innerHTML = counts.map((n, i) =>
+      `<button class="chip ${i === 4 ? 'active' : ''}" data-v="${n}">${n} 题</button>`).join('') +
+      `<button class="chip" data-v="custom">自定义</button>`;
+    document.getElementById('count-chips').onclick = (e) => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      document.querySelectorAll('#count-chips .chip').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (b.dataset.v === 'custom') {
+        state.custom = true;
+        document.getElementById('custom-count-row').style.display = '';
+        state.count = getCustomCount();
+      } else {
+        state.custom = false;
+        document.getElementById('custom-count-row').style.display = 'none';
+        state.count = Number(b.dataset.v);
+      }
+    };
+    document.getElementById('custom-count').oninput = () => { state.count = getCustomCount(); };
+    function getCustomCount() {
+      const v = Number(document.getElementById('custom-count').value) || 1;
+      return Math.min(Math.max(Math.floor(v), 1), 200);
+    }
+  })();
+
+  document.getElementById('btn-start').onclick = () => {
+    document.getElementById('phase-setup').style.display = 'none';
+    PracticeCore.create({
+      category: state.label,
+      fetchQuestions: async () => {
+        const qs = await getJSON(`/api/practice/questions?type=${encodeURIComponent(state.type)}&limit=${state.count}&mode=${state.mode}`);
+        if (!qs.length && state.mode === 'new') {
+          toast('本类题库已经全部练完啦！想再过一轮，请把「出题顺序」切到「未做过的优先」。');
+        }
+        return qs;
+      }
+    }).start();
+  };
+})();
+</script>
+</body>
+</html>

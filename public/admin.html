@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>管理后台 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="page-title">管理后台 <small>题库维护 · 批量导入 · 成绩统计</small></div>
+
+  <div class="tabs" id="tabs">
+    <button class="active" data-tab="stats">数据统计</button>
+    <button data-tab="users">用户管理</button>
+    <button data-tab="questions">题库管理</button>
+    <button data-tab="import">批量导入</button>
+    <button data-tab="records">成绩管理</button>
+  </div>
+
+  <!-- ============ 数据统计 ============ -->
+  <div id="tab-stats">
+    <div class="stat-cards" id="stat-cards"></div>
+    <div class="card mt16">
+      <h3 style="margin-bottom:12px">题库题型分布</h3>
+      <div class="bar-list" id="cat-bars"></div>
+    </div>
+    <div class="card mt16">
+      <h3 style="margin-bottom:12px">答题模式概况</h3>
+      <div class="table-wrap">
+        <table style="min-width:360px">
+          <thead><tr><th>模式</th><th>完成次数</th><th>平均分</th></tr></thead>
+          <tbody id="mode-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card mt16">
+      <h3 style="margin-bottom:12px">最近答题记录</h3>
+      <div class="table-wrap">
+        <table style="min-width:520px">
+          <thead><tr><th>时间</th><th>用户</th><th>模式</th><th>范围</th><th>得分</th><th>正确/总数</th></tr></thead>
+          <tbody id="recent-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 用户管理 ============ -->
+  <div id="tab-users" style="display:none">
+    <div class="filter-bar">
+      <input class="input" id="u-keyword" placeholder="按用户名搜索">
+      <select class="select" id="u-role">
+        <option value="">全部角色</option>
+        <option value="admin">管理员</option>
+        <option value="user">普通用户</option>
+      </select>
+      <button class="btn btn-outline" id="u-search">查询</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>注册时间</th><th>考试次数</th><th>刷题次数</th><th>平均分</th><th>累计错题</th><th>操作</th></tr></thead>
+        <tbody id="u-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span class="info" id="u-pageinfo"></span>
+    </div>
+  </div>
+
+  <!-- ============ 题库管理 ============ -->
+  <div id="tab-questions" style="display:none">
+    <div class="filter-bar">
+      <input class="input" id="q-keyword" placeholder="搜索题干关键词">
+      <select class="select" id="q-type">
+        <option value="">全部题型</option>
+        <option value="single">单选题</option>
+        <option value="multiple">多选题</option>
+        <option value="judge">判断题</option>
+      </select>
+      <button class="btn btn-outline" id="q-search">查询</button>
+      <button class="btn" id="q-add">+ 新增题目</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>题型</th><th>题干</th><th>答案</th><th>操作</th></tr></thead>
+        <tbody id="q-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span class="info" id="q-pageinfo"></span>
+      <div class="ops">
+        <button class="btn btn-sm btn-ghost" id="q-prev">上一页</button>
+        <button class="btn btn-sm btn-ghost" id="q-next">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 批量导入 ============ -->
+  <div id="tab-import" style="display:none">
+    <div class="card">
+      <div class="help-block">
+        <b>方式一（推荐）：直接上传题库 CSV</b>，表头为
+        <code>题号,题干,A,B,C,D,E,答案,难度,题型</code><br>
+        示例：<br>
+        <code>1,安全生产工作的方针是（ ）。,安全第一,预防为主,综合治理,以上都是,D,无,单选题</code><br>
+        <code>2,两个以上生产经营单位在同一作业区域内……（ ）,正确,错误,,,,A,判断,单选题</code><br>
+        识别规则：<code>难度</code> 列写「判断」即判为判断题（选项为 正确/错误，答案填 A 或 B）；
+        否则按 <code>题型</code> 列的「单选题 / 多选题」处理，答案为字母（多选如 <code>ABCD</code>）。<br><br>
+        <b>方式二：竖线分隔文本</b>，每行一道题：<code>题型|题干|选项A|选项B|…|正确答案|解析</code><br>
+        示例：<code>单选|查询数据用什么语句？|INSERT|UPDATE|SELECT|DELETE|C|SELECT 用于查询</code><br>
+        说明：以 <code>#</code> 开头的行会被忽略；解析可省略；系统会自动定位答案列，因此选项多少都不会串行。<br>
+        大文件会自动分片导入并显示进度。
+      </div>
+      <div class="form-item">
+        <label>上传题库文件（CSV / TXT，推荐直接上传，无需粘贴）</label>
+        <input type="file" class="input" id="imp-file" accept=".csv,.txt">
+      </div>
+      <div class="form-item">
+        <label>或粘贴题目内容（留空则用上面上传的文件）</label>
+        <textarea class="textarea" id="imp-text" style="min-height:160px" placeholder="题号,题干,A,B,C,D,E,答案,难度,题型"></textarea>
+      </div>
+      <button class="btn" id="imp-btn">开始导入</button>
+      <button class="btn btn-outline" id="imp-clear" style="margin-left:8px">清空题库</button>
+      <div class="import-result" id="imp-result"></div>
+    </div>
+  </div>
+
+  <!-- ============ 成绩管理 ============ -->
+  <div id="tab-records" style="display:none">
+    <div class="filter-bar">
+      <input class="input" id="r-keyword" placeholder="按用户名搜索">
+      <select class="select" id="r-mode">
+        <option value="">全部模式</option>
+        <option value="exam">模拟考试</option>
+        <option value="practice">专项刷题</option>
+      </select>
+      <button class="btn btn-outline" id="r-search">查询</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>时间</th><th>用户</th><th>模式</th><th>范围</th><th>得分</th><th>正确/总数</th><th>用时</th><th>操作</th></tr></thead>
+        <tbody id="r-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span class="info" id="r-pageinfo"></span>
+      <div class="ops">
+        <button class="btn btn-sm btn-ghost" id="r-prev">上一页</button>
+        <button class="btn btn-sm btn-ghost" id="r-next">下一页</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 题目编辑弹窗 -->
+<div class="modal-mask" id="edit-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="edit-title">新增题目</h3>
+      <button class="modal-close" onclick="closeEdit()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-item">
+          <label>题型</label>
+          <select class="select" id="e-type">
+            <option value="single">单选题</option>
+            <option value="multiple">多选题</option>
+            <option value="judge">判断题</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-item">
+        <label>题干</label>
+        <textarea class="textarea" id="e-stem" placeholder="请输入题干"></textarea>
+      </div>
+      <div id="e-options-box">
+        <div class="form-item"><label>选项 A</label><input class="input e-opt"></div>
+        <div class="form-item"><label>选项 B</label><input class="input e-opt"></div>
+        <div class="form-item"><label>选项 C</label><input class="input e-opt"></div>
+        <div class="form-item"><label>选项 D</label><input class="input e-opt"></div>
+      </div>
+      <div class="form-item" id="e-answer-box">
+        <label>正确答案（单选填一个字母，多选填多个字母如 ABD）</label>
+        <input class="input" id="e-answer" placeholder="如 A 或 ABD">
+      </div>
+      <div class="form-item" id="e-judge-box" style="display:none">
+        <label>正确答案</label>
+        <div class="chips" id="e-judge-ans">
+          <button class="chip active" data-v="T">正确</button>
+          <button class="chip" data-v="F">错误</button>
+        </div>
+      </div>
+      <div class="form-item">
+        <label>解析（选填）</label>
+        <textarea class="textarea" id="e-analysis" placeholder="答案解析"></textarea>
+      </div>
+      <div class="form-error" id="e-error"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeEdit()">取消</button>
+      <button class="btn" id="e-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重置密码弹窗 -->
+<div class="modal-mask" id="reset-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="reset-title">重置密码</h3>
+      <button class="modal-close" onclick="document.getElementById('reset-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="reset-tip" id="reset-tip"></p>
+      <div class="form-item">
+        <label>新密码（6~40 位）</label>
+        <input class="input" id="reset-pwd" type="text" placeholder="请输入新密码" autocomplete="off">
+      </div>
+      <div class="form-error" id="reset-error"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="document.getElementById('reset-mask').style.display='none'">取消</button>
+      <button class="btn" id="reset-save">确定重置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 成绩明细弹窗 -->
+<div class="modal-mask" id="rd-mask" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="rd-title">答题明细</h3>
+      <button class="modal-close" onclick="document.getElementById('rd-mask').style.display='none'">×</button>
+    </div>
+    <div class="modal-body" id="rd-body"></div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  Auth.require('admin');
+  renderHeader('admin');
+
+  /* ================= Tab 切换 ================= */
+  document.getElementById('tabs').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    ['stats', 'users', 'questions', 'import', 'records'].forEach(t => {
+      document.getElementById('tab-' + t).style.display = t === b.dataset.tab ? '' : 'none';
+    });
+  };
+
+  /* ================= 数据统计 ================= */
+  async function loadStats() {
+    try {
+      const s = await getJSON('/api/admin/stats');
+      const o = s.overview;
+      document.getElementById('stat-cards').innerHTML = `
+        <div class="stat-card"><div class="num">${o.userCount}</div><div class="lbl">注册用户</div></div>
+        <div class="stat-card"><div class="num">${o.questionCount}</div><div class="lbl">题库总题数</div></div>
+        <div class="stat-card"><div class="num">${o.recordCount}</div><div class="lbl">已交答卷</div></div>
+        <div class="stat-card"><div class="num" style="color:${o.avgScore >= 60 ? 'var(--success)' : 'var(--danger)'}">${o.avgScore}</div><div class="lbl">全体平均分</div></div>`;
+      const max = Math.max(...s.byCategory.map(c => c.count), 1);
+      document.getElementById('cat-bars').innerHTML = s.byCategory.map(c => `
+        <div class="bar-item">
+          <div class="row"><span>${esc(c.category)}</span><span>${c.count} 题</span></div>
+          <div class="track"><i style="width:${(c.count / max) * 100}%"></i></div>
+        </div>`).join('') || '<div class="empty">暂无题目</div>';
+      document.getElementById('mode-rows').innerHTML = s.byMode.map(m => `
+        <tr><td>${MODE_NAME[m.mode]}</td><td>${m.count}</td><td>${m.avgScore}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">暂无记录</td></tr>';
+      document.getElementById('recent-rows').innerHTML = s.recent.map(r => `
+        <tr><td style="white-space:nowrap">${fmtDate(r.created_at)}</td><td>${esc(r.username)}</td>
+        <td>${MODE_NAME[r.mode]}</td><td>${esc(r.category)}</td>
+        <td><b style="color:${r.score >= 60 ? 'var(--success)' : 'var(--danger)'}">${r.score}</b></td>
+        <td>${r.correct_count} / ${r.total_count}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">暂无记录</td></tr>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  /* ================= 用户管理 ================= */
+  async function loadUsers() {
+    try {
+      const kw = document.getElementById('u-keyword').value.trim();
+      const role = document.getElementById('u-role').value;
+      const r = await getJSON(`/api/admin/users?keyword=${encodeURIComponent(kw)}&role=${role}`);
+      const list = r.list || [];
+      const total = list.reduce((s, u) => s + u.examCount + u.practiceCount, 0);
+      document.getElementById('u-pageinfo').textContent = `共 ${list.length} 名用户 · 累计作答 ${total} 次`;
+      document.getElementById('u-tbody').innerHTML = list.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td>${esc(u.username)}</td>
+          <td><span class="tag ${u.role === 'admin' ? 'tag-orange' : 'tag-blue'}">${u.role === 'admin' ? '管理员' : '普通用户'}</span></td>
+          <td style="white-space:nowrap">${fmtDate(u.created_at)}</td>
+          <td>${u.examCount}</td>
+          <td>${u.practiceCount}</td>
+          <td><b style="color:${u.avgScore >= 60 ? 'var(--success)' : 'var(--text-3)'}">${u.avgScore}</b></td>
+          <td>${u.wrongCount}</td>
+          <td class="td-actions">
+            <button class="btn btn-sm btn-outline" data-reset="${u.id}" data-name="${esc(u.username)}">重置密码</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="9" class="empty">暂无用户</td></tr>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('u-search').onclick = loadUsers;
+  document.getElementById('u-keyword').onkeydown = (e) => { if (e.key === 'Enter') loadUsers(); };
+  document.getElementById('u-role').onchange = loadUsers;
+
+  /* ---------- 重置密码 ---------- */
+  let resetUserId = null;
+  document.getElementById('u-tbody').onclick = (e) => {
+    const b = e.target.closest('button[data-reset]');
+    if (!b) return;
+    resetUserId = Number(b.dataset.reset);
+    document.getElementById('reset-title').textContent = `重置密码 · ${b.dataset.name}`;
+    document.getElementById('reset-tip').textContent = `你正在为「${b.dataset.name}」设置新密码，确定后该用户下次需用新密码登录。`;
+    document.getElementById('reset-pwd').value = '';
+    document.getElementById('reset-error').textContent = '';
+    document.getElementById('reset-mask').style.display = '';
+    document.getElementById('reset-pwd').focus();
+  };
+  document.getElementById('reset-mask').onclick = (e) => {
+    if (e.target.id === 'reset-mask') e.target.style.display = 'none';
+  };
+  document.getElementById('reset-save').onclick = async () => {
+    const pwd = document.getElementById('reset-pwd').value;
+    const errEl = document.getElementById('reset-error');
+    errEl.textContent = '';
+    try {
+      const r = await putJSON(`/api/admin/users/${resetUserId}/reset-password`, { password: pwd });
+      toast(`已为 ${r.username} 重置密码`, 'ok');
+      document.getElementById('reset-mask').style.display = 'none';
+    } catch (ex) { errEl.textContent = ex.message; }
+  };
+
+  /* ================= 题库管理 ================= */
+  const qState = { page: 1, total: 0 };
+  const Q_PAGESIZE = 10;
+
+  async function loadQuestions() {
+    try {
+      const kw = document.getElementById('q-keyword').value.trim();
+      const type = document.getElementById('q-type').value;
+      const r = await getJSON(`/api/admin/questions?page=${qState.page}&pageSize=${Q_PAGESIZE}` +
+        `&keyword=${encodeURIComponent(kw)}&type=${type}`);
+      qState.total = r.total;
+      document.getElementById('q-pageinfo').textContent = `共 ${r.total} 题 · 第 ${r.page} / ${Math.max(1, Math.ceil(r.total / Q_PAGESIZE))} 页`;
+      document.getElementById('q-tbody').innerHTML = r.list.map(q => `
+        <tr>
+          <td>${q.id}</td>
+          <td><span class="tag tag-blue">${TYPE_NAME[q.type]}</span></td>
+          <td style="max-width:340px">${esc(q.stem.length > 40 ? q.stem.slice(0, 40) + '…' : q.stem)}</td>
+          <td><b>${fmtAnswer(q.answer)}</b></td>
+          <td class="td-actions">
+            <button class="btn btn-sm btn-outline" data-edit='${encodeURIComponent(JSON.stringify(q))}'>编辑</button>
+            <button class="btn btn-sm btn-danger" data-del="${q.id}">删除</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="empty">暂无题目，请点击「新增题目」或使用「批量导入」</td></tr>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('q-search').onclick = () => { qState.page = 1; loadQuestions(); };
+  document.getElementById('q-keyword').onkeydown = (e) => { if (e.key === 'Enter') { qState.page = 1; loadQuestions(); } };
+  document.getElementById('q-prev').onclick = () => { if (qState.page > 1) { qState.page--; loadQuestions(); } };
+  document.getElementById('q-next').onclick = () => {
+    if (qState.page < Math.ceil(qState.total / Q_PAGESIZE)) { qState.page++; loadQuestions(); }
+  };
+
+  document.getElementById('q-tbody').onclick = (e) => {
+    const del = e.target.closest('button[data-del]');
+    const edit = e.target.closest('button[data-edit]');
+    if (del) {
+      const id = del.dataset.del;
+      if (confirmAction(`确定删除题目 #${id} 吗？\n注意：相关答题明细也会一并删除。`)) {
+        delJSON(`/api/admin/questions/${id}`).then(() => { toast('已删除', 'ok'); loadQuestions(); })
+          .catch(ex => toast(ex.message, 'err'));
+      }
+    } else if (edit) {
+      openEdit(JSON.parse(decodeURIComponent(edit.dataset.edit)));
+    }
+  };
+
+  /* ---------- 题目编辑弹窗 ---------- */
+  let editingId = null;
+  let judgeAnswer = 'T';
+
+  document.getElementById('q-add').onclick = () => openEdit(null);
+
+  function openEdit(q) {
+    editingId = q ? q.id : null;
+    document.getElementById('edit-title').textContent = q ? `编辑题目 #${q.id}` : '新增题目';
+    document.getElementById('e-error').textContent = '';
+    document.getElementById('e-type').value = q ? q.type : 'single';
+    document.getElementById('e-stem').value = q ? q.stem : '';
+    document.getElementById('e-analysis').value = q ? (q.analysis || '') : '';
+    document.getElementById('e-answer').value = q ? q.answer : '';
+    judgeAnswer = q && q.answer === 'F' ? 'F' : 'T';
+    const opts = document.querySelectorAll('.e-opt');
+    opts.forEach((o, i) => {
+      o.value = q && q.type !== 'judge' && q.options[i] ? q.options[i] : '';
+    });
+    document.querySelectorAll('#e-judge-ans .chip').forEach(c =>
+      c.classList.toggle('active', c.dataset.v === judgeAnswer));
+    syncTypeUI();
+    document.getElementById('edit-mask').style.display = '';
+  }
+
+  function closeEdit() { document.getElementById('edit-mask').style.display = 'none'; }
+  window.closeEdit = closeEdit;
+
+  function syncTypeUI() {
+    const type = document.getElementById('e-type').value;
+    document.getElementById('e-options-box').style.display = type === 'judge' ? 'none' : '';
+    document.getElementById('e-answer-box').style.display = type === 'judge' ? 'none' : '';
+    document.getElementById('e-judge-box').style.display = type === 'judge' ? '' : 'none';
+  }
+  document.getElementById('e-type').onchange = syncTypeUI;
+
+  document.getElementById('e-judge-ans').onclick = (e) => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    judgeAnswer = b.dataset.v;
+    document.querySelectorAll('#e-judge-ans .chip').forEach(c => c.classList.remove('active'));
+    b.classList.add('active');
+  };
+
+  document.getElementById('e-save').onclick = async () => {
+    const errEl = document.getElementById('e-error');
+    errEl.textContent = '';
+    const type = document.getElementById('e-type').value;
+    const options = [...document.querySelectorAll('.e-opt')].map(o => o.value.trim()).filter(Boolean);
+    const body = {
+      type,
+      stem: document.getElementById('e-stem').value.trim(),
+      analysis: document.getElementById('e-analysis').value.trim(),
+      options: type === 'judge' ? ['正确', '错误'] : options,
+      answer: type === 'judge' ? judgeAnswer : document.getElementById('e-answer').value.trim().toUpperCase()
+    };
+    try {
+      if (editingId) {
+        await putJSON(`/api/admin/questions/${editingId}`, body);
+        toast('修改已保存', 'ok');
+      } else {
+        await postJSON('/api/admin/questions', body);
+        toast('题目已新增', 'ok');
+      }
+      closeEdit();
+      loadQuestions();
+    } catch (ex) { errEl.textContent = ex.message; }
+  };
+
+  document.getElementById('edit-mask').onclick = (e) => {
+    if (e.target.id === 'edit-mask') closeEdit();
+  };
+
+  /* ================= 批量导入 ================= */
+
+  /**
+   * 大题库分片导入：
+   * Cloudflare Workers / D1 对单次请求的体积和参数数量都有限制，
+   * 因此按 150 行一片依次提交，并实时显示进度。
+   */
+  const CHUNK_LINES = 150;
+
+  function splitKeepHeader(text) {
+    const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+    // 找出表头（第一行非空行）
+    let headIdx = lines.findIndex(l => l.trim() !== '');
+    if (headIdx < 0) return [];
+    const header = lines[headIdx];
+    const body = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
+    if (!/题干|题型|答案/.test(header)) return chunkPlain(body);   // 竖线格式，无表头
+    const chunks = [];
+    for (let i = 0; i < body.length; i += CHUNK_LINES) {
+      chunks.push([header, ...body.slice(i, i + CHUNK_LINES)].join('\n'));
+    }
+    return chunks;
+  }
+
+  function chunkPlain(body) {
+    const chunks = [];
+    for (let i = 0; i < body.length; i += CHUNK_LINES) chunks.push(body.slice(i, i + CHUNK_LINES).join('\n'));
+    return chunks;
+  }
+
+  document.getElementById('imp-file').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const t = String(reader.result || '');
+      const isBig = t.length > 200000;
+      document.getElementById('imp-text').value = isBig ? `（已载入文件 ${f.name}，共 ${t.split(/\r?\n/).length} 行，内容较大未填入文本框，直接点「开始导入」即可）` : t;
+      window.__impText = t;
+      toast('文件已载入，可直接导入', 'ok');
+    };
+    reader.readAsText(f, 'UTF-8');
+  };
+
+  const impBtn = document.getElementById('imp-btn');
+  impBtn.onclick = async () => {
+    const text = window.__impText || document.getElementById('imp-text').value;
+    const resultEl = document.getElementById('imp-result');
+    if (!text.trim()) { toast('请先粘贴题目内容或上传文件', 'err'); return; }
+
+    const chunks = splitKeepHeader(text);
+    if (!chunks.length) { toast('没有解析到可导入的内容', 'err'); return; }
+
+    impBtn.disabled = true;
+    let ok = 0, bad = [];
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        impBtn.textContent = `导入中… ${i + 1}/${chunks.length}`;
+        const r = await postJSON('/api/admin/questions/import', { text: chunks[i] });
+        ok += r.success || 0;
+        if (r.failed && r.failed.length) bad = bad.concat(r.failed.map(f => `第 ${f.line} 行：${f.reason}`));
+        resultEl.innerHTML = `正在导入：<b>${i + 1}/${chunks.length}</b> 片，已成功 <b style="color:var(--success)">${ok}</b> 题…`;
+      }
+      let html = `导入完成：成功 <b style="color:var(--success)">${ok}</b> 条` +
+        (bad.length ? `，失败 <b style="color:var(--danger)">${bad.length}</b> 条` : '，无失败');
+      if (bad.length) html += `<div class="fail">失败明细（行号：原因）：\n` + bad.join('\n') + `</div>`;
+      resultEl.innerHTML = html;
+      toast(`成功导入 ${ok} 道题`, 'ok');
+      window.__impText = '';
+      document.getElementById('imp-text').value = '';
+      loadQuestions();
+      loadStats();
+    } catch (ex) {
+      resultEl.innerHTML = `<span style="color:var(--danger)">${esc(ex.message)}</span>`;
+    } finally {
+      impBtn.disabled = false; impBtn.textContent = '开始导入';
+    }
+  };
+
+  // 清空题库（导入前先清一遍，避免重复累积）
+  document.getElementById('imp-clear').onclick = async () => {
+    if (!confirmAction('确定要清空全部题目吗？相关的答题记录与错题本也会一并删除，且不可恢复。')) return;
+    try {
+      await postJSON('/api/admin/questions/clear', {});
+      toast('题库已清空', 'ok');
+      loadQuestions(); loadStats();
+    } catch (ex) { toast(ex.message, 'err'); }
+  };
+
+  /* ================= 成绩管理 ================= */
+  const rState = { page: 1, total: 0 };
+  const R_PAGESIZE = 10;
+
+  async function loadRecords() {
+    try {
+      const kw = document.getElementById('r-keyword').value.trim();
+      const mode = document.getElementById('r-mode').value;
+      const r = await getJSON(`/api/admin/records?page=${rState.page}&pageSize=${R_PAGESIZE}` +
+        `&keyword=${encodeURIComponent(kw)}&mode=${mode}`);
+      rState.total = r.total;
+      document.getElementById('r-pageinfo').textContent = `共 ${r.total} 份答卷 · 第 ${r.page} / ${Math.max(1, Math.ceil(r.total / R_PAGESIZE))} 页`;
+      document.getElementById('r-tbody').innerHTML = r.list.map(x => `
+        <tr>
+          <td style="white-space:nowrap">${fmtDate(x.created_at)}</td>
+          <td>${esc(x.username)}</td>
+          <td><span class="tag ${x.mode === 'exam' ? 'tag-blue' : 'tag-green'}">${MODE_NAME[x.mode]}</span></td>
+          <td>${esc(x.category)}</td>
+          <td><b style="color:${x.score >= 60 ? 'var(--success)' : 'var(--danger)'}">${x.score}</b></td>
+          <td>${x.correct_count} / ${x.total_count}</td>
+          <td style="white-space:nowrap">${fmtTime(x.duration_sec)}${x.overtime ? ' <span class="tag tag-red">超时</span>' : ''}</td>
+          <td class="td-actions"><button class="btn btn-sm btn-outline" data-id="${x.id}">明细</button></td>
+        </tr>`).join('') || '<tr><td colspan="8" class="empty">暂无答题记录</td></tr>';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('r-search').onclick = () => { rState.page = 1; loadRecords(); };
+  document.getElementById('r-keyword').onkeydown = (e) => { if (e.key === 'Enter') { rState.page = 1; loadRecords(); } };
+  document.getElementById('r-prev').onclick = () => { if (rState.page > 1) { rState.page--; loadRecords(); } };
+  document.getElementById('r-next').onclick = () => {
+    if (rState.page < Math.ceil(rState.total / R_PAGESIZE)) { rState.page++; loadRecords(); }
+  };
+
+  document.getElementById('r-tbody').onclick = (e) => {
+    const b = e.target.closest('button[data-id]');
+    if (b) showRecordDetail(Number(b.dataset.id));
+  };
+
+  async function showRecordDetail(id) {
+    try {
+      const d = await getJSON(`/api/admin/records/${id}`);
+      document.getElementById('rd-title').innerHTML =
+        `${esc(d.username)} · ${MODE_NAME[d.mode]} · <span style="color:${d.score >= 60 ? 'var(--success)' : 'var(--danger)'}">${d.score} 分</span>
+         <small style="font-weight:400;color:var(--text-3)">（${fmtDate(d.created_at)} · ${d.correct_count}/${d.total_count} 正确 · 用时 ${fmtTime(d.duration_sec)}${d.overtime ? ' · 超时' : ''}）</small>`;
+      document.getElementById('rd-body').innerHTML = d.details.map((x, i) => `
+        <div class="detail-item">
+          <span class="tag ${x.is_correct ? 'tag-green' : 'tag-red'}">${x.is_correct ? '✓ 正确' : '✗ 错误'}</span>
+          <span class="tag tag-blue">${TYPE_NAME[x.type]}</span>
+          <span class="tag">${esc(x.category)}</span>
+          <div class="q">${i + 1}. ${esc(x.stem)}</div>
+          <div class="ansline">
+            <span>用户答案：<b class="${x.is_correct ? 'ok' : 'wrong'}">${fmtAnswer(x.user_answer)}</b></span>
+            <span>正确答案：<b class="ok">${fmtAnswer(x.answer)}</b></span>
+          </div>
+          ${x.analysis ? `<div class="analysis">${esc(x.analysis)}</div>` : ''}
+        </div>`).join('') || '<div class="empty">该答卷无答题明细</div>';
+      document.getElementById('rd-mask').style.display = '';
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  document.getElementById('rd-mask').onclick = (e) => {
+    if (e.target.id === 'rd-mask') e.target.style.display = 'none';
+  };
+
+  /* ================= 初始化 ================= */
+  loadStats();
+  loadUsers();
+  loadQuestions();
+  loadRecords();
+})();
+</script>
+</body>
+</html>

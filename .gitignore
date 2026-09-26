@@ -1,0 +1,16 @@
+node_modules/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.tar
+
+workers/node_modules/
+workers/.wrangler/
+workers/dist/
+
+.env
+.dev.vars
+.DS_Store
+Thumbs.db

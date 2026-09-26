@@ -1,0 +1,17 @@
+.git
+.github
+.vscode
+node_modules
+data
+*.log
+*.tar
+*.db
+*.db-shm
+*.db-wal
+.env
+.dev.vars
+workers/node_modules
+workers/.wrangler
+workers/dist
+README.md
+方案一*.md

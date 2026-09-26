@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>登录 - 在线答题系统</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="logo"><span class="logo-ico">✎</span>在线答题系统</div>
+    <div class="sub">专项刷题 · 模拟考试 · 成绩管理</div>
+
+    <div class="tabs" id="login-tabs">
+      <button class="active" data-tab="login">登 录</button>
+      <button data-tab="register">注 册</button>
+      <button data-tab="setup" id="tab-btn-setup" style="display:none">初始 化</button>
+    </div>
+
+    <form id="form-login">
+      <div class="form-item">
+        <label>用户名</label>
+        <input class="input" id="li-username" placeholder="请输入用户名" autocomplete="username">
+      </div>
+      <div class="form-item">
+        <label>密码</label>
+        <input class="input" id="li-password" type="password" placeholder="请输入密码" autocomplete="current-password">
+      </div>
+      <div class="form-error" id="li-error"></div>
+      <button class="btn btn-block" type="submit" id="li-btn">登 录</button>
+    </form>
+
+    <form id="form-register" style="display:none">
+      <div class="form-item">
+        <label>用户名</label>
+        <input class="input" id="rg-username" placeholder="3~20 位字母、数字、下划线或中文">
+      </div>
+      <div class="form-item">
+        <label>密码</label>
+        <input class="input" id="rg-password" type="password" placeholder="至少 6 位">
+      </div>
+      <div class="form-item">
+        <label>确认密码</label>
+        <input class="input" id="rg-password2" type="password" placeholder="再次输入密码">
+      </div>
+      <div class="form-error" id="rg-error"></div>
+      <button class="btn btn-block" type="submit" id="rg-btn">注册并登录</button>
+    </form>
+
+    <form id="form-setup" style="display:none">
+      <div class="form-item">
+        <label>管理员用户名</label>
+        <input class="input" id="sp-username" placeholder="3~20 位字母、数字、下划线或中文">
+      </div>
+      <div class="form-item">
+        <label>管理员密码</label>
+        <input class="input" id="sp-password" type="password" placeholder="至少 6 位">
+      </div>
+      <div class="form-item">
+        <label>确认密码</label>
+        <input class="input" id="sp-password2" type="password" placeholder="再次输入密码">
+      </div>
+      <div class="form-error" id="sp-error"></div>
+      <button class="btn btn-block" type="submit" id="sp-btn">创建管理员并进入</button>
+      <div class="help-block" style="margin-top:10px">
+        系统还没有任何账号，这里创建的第一个账号即为<b>管理员</b>。<br>
+        创建后请到「管理后台 → 批量导入」上传题库 CSV。
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  // 已登录直接跳转
+  if (Auth.token) { location.href = Auth.user.role === 'admin' ? 'admin.html' : 'index.html'; return; }
+
+  // tab 切换
+  const showTab = (tab) => {
+    document.querySelectorAll('#login-tabs button').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`#login-tabs button[data-tab="${tab}"]`);
+    if (btn) btn.classList.add('active');
+    ['login', 'register', 'setup'].forEach(t => {
+      const el = document.getElementById('form-' + t);
+      if (el) el.style.display = t === tab ? '' : 'none';
+    });
+  };
+  document.querySelectorAll('#login-tabs button').forEach(btn => {
+    btn.onclick = () => showTab(btn.dataset.tab);
+  });
+
+  // 首次使用：若系统还没有账号，只显示「初始化」
+  (async () => {
+    try {
+      const b = await getJSON('/api/bootstrap');
+      if (b && b.needSetup) {
+        document.getElementById('tab-btn-setup').style.display = '';
+        document.querySelector('#login-tabs button[data-tab="login"]').style.display = 'none';
+        document.querySelector('#login-tabs button[data-tab="register"]').style.display = 'none';
+        showTab('setup');
+      }
+    } catch (e) { /* 接口不可用则按普通登录页处理 */ }
+  })();
+
+  // 初始化管理员
+  document.getElementById('form-setup').onsubmit = async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('sp-error');
+    errEl.textContent = '';
+    const username = document.getElementById('sp-username').value.trim();
+    const password = document.getElementById('sp-password').value;
+    const password2 = document.getElementById('sp-password2').value;
+    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+    if (password !== password2) { errEl.textContent = '两次输入的密码不一致'; return; }
+    const btn = document.getElementById('sp-btn');
+    btn.disabled = true; btn.textContent = '创建中…';
+    try {
+      const r = await postJSON('/api/setup', { username, password });
+      Auth.save(r.token, r.user);
+      toast('管理员创建成功', 'ok');
+      setTimeout(() => location.href = 'admin.html', 400);
+    } catch (ex) {
+      errEl.textContent = ex.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '创建管理员并进入';
+    }
+  };
+
+  // 登录
+  document.getElementById('form-login').onsubmit = async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('li-error');
+    errEl.textContent = '';
+    const username = document.getElementById('li-username').value.trim();
+    const password = document.getElementById('li-password').value;
+    if (!username || !password) { errEl.textContent = '请输入用户名和密码'; return; }
+    const btn = document.getElementById('li-btn');
+    btn.disabled = true; btn.textContent = '登录中…';
+    try {
+      const r = await postJSON('/api/login', { username, password });
+      Auth.save(r.token, r.user);
+      toast('登录成功', 'ok');
+      setTimeout(() => location.href = r.user.role === 'admin' ? 'admin.html' : 'index.html', 400);
+    } catch (ex) {
+      errEl.textContent = ex.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '登 录';
+    }
+  };
+
+  // 注册
+  document.getElementById('form-register').onsubmit = async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('rg-error');
+    errEl.textContent = '';
+    const username = document.getElementById('rg-username').value.trim();
+    const password = document.getElementById('rg-password').value;
+    const password2 = document.getElementById('rg-password2').value;
+    if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+    if (password !== password2) { errEl.textContent = '两次输入的密码不一致'; return; }
+    const btn = document.getElementById('rg-btn');
+    btn.disabled = true; btn.textContent = '注册中…';
+    try {
+      const r = await postJSON('/api/register', { username, password });
+      Auth.save(r.token, r.user);
+      toast('注册成功，欢迎加入！', 'ok');
+      setTimeout(() => location.href = 'index.html', 400);
+    } catch (ex) {
+      errEl.textContent = ex.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '注册并登录';
+    }
+  };
+})();
+</script>
+</body>
+</html>
