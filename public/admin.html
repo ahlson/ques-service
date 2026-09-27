@@ -125,18 +125,30 @@
         <code>1,安全生产工作的方针是（ ）。,安全第一,预防为主,综合治理,以上都是,D,无,单选题</code><br>
         <code>2,两个以上生产经营单位在同一作业区域内……（ ）,正确,错误,,,,A,判断,单选题</code><br>
         识别规则：<code>难度</code> 列写「判断」即判为判断题（选项为 正确/错误，答案填 A 或 B）；
-        否则按 <code>题型</code> 列的「单选题 / 多选题」处理，答案为字母（多选如 <code>ABCD</code>）。<br><br>
+        否则按 <code>题型</code> 列的「单选题 / 多选题」处理，答案为字母（多选如 <code>ABCD</code>）。<br>
+        <b>没有表头也可以</b>：系统会按「题干、A、B、C、D、E、答案、难度、题型」的默认列序读取。<br><br>
         <b>方式二：竖线分隔文本</b>，每行一道题：<code>题型|题干|选项A|选项B|…|正确答案|解析</code><br>
         示例：<code>单选|查询数据用什么语句？|INSERT|UPDATE|SELECT|DELETE|C|SELECT 用于查询</code><br>
         说明：以 <code>#</code> 开头的行会被忽略；解析可省略；系统会自动定位答案列，因此选项多少都不会串行。<br>
         大文件会自动分片导入并显示进度。
       </div>
       <div class="form-item">
-        <label>题库名称（必填，导入后可按整个题库授权给用户）</label>
+        <label>导入到</label>
+        <div class="chips" id="imp-target">
+          <button class="chip active" data-v="new">新建题库</button>
+          <button class="chip" data-v="exist">追加到已有题库</button>
+        </div>
+      </div>
+      <div class="form-item" id="imp-new-box">
+        <label>新题库名称（导入后可按整个题库授权给用户）</label>
         <input class="input" id="imp-name" placeholder="例如：安全生产执法题库 2025版" maxlength="60">
       </div>
-      <div class="form-item">
-        <label>可见范围</label>
+      <div class="form-item" id="imp-exist-box" style="display:none">
+        <label>选择要追加的题库（题目会加进这个题库，不会新建）</label>
+        <select class="select" id="imp-bank"></select>
+      </div>
+      <div class="form-item" id="imp-scope-box">
+        <label>可见范围（仅新建题库时设置）</label>
         <div class="chips" id="imp-scope">
           <button class="chip active" data-v="public">全体用户可见</button>
           <button class="chip" data-v="private">只给指定用户</button>
@@ -195,6 +207,10 @@
       <button class="modal-close" onclick="closeEdit()">×</button>
     </div>
     <div class="modal-body">
+      <div class="form-item">
+        <label>所属题库（不选则归入「未分组」，所有人都能练到）</label>
+        <select class="select" id="e-bank" data-placeholder="未分组"></select>
+      </div>
       <div class="form-row">
         <div class="form-item">
           <label>题型</label>
@@ -408,6 +424,9 @@
       const role = document.getElementById('u-role').value;
       const r = await getJSON(`/api/admin/users?keyword=${encodeURIComponent(kw)}&role=${role}`);
       const list = r.list || [];
+      // 关键：allUsers 是「导入授权 / 题库授权」的勾选来源，
+      // 必须在这里同步，否则勾选区永远显示「还没有用户」。
+      if (!kw && !role) allUsers = list;
       const total = list.reduce((s, u) => s + u.examCount + u.practiceCount, 0);
       document.getElementById('u-pageinfo').textContent = `共 ${list.length} 名用户 · 累计作答 ${total} 次`;
       document.getElementById('u-tbody').innerHTML = list.map(u => `
@@ -573,6 +592,15 @@
       if (boxId === 'imp-scope') {
         document.getElementById('imp-users-box').style.display = b.dataset.v === 'private' ? '' : 'none';
       }
+      if (boxId === 'imp-target') {
+        const isNew = b.dataset.v !== 'exist';
+        document.getElementById('imp-new-box').style.display = isNew ? '' : 'none';
+        document.getElementById('imp-exist-box').style.display = isNew ? 'none' : '';
+        document.getElementById('imp-scope-box').style.display = isNew ? '' : 'none';
+        if (!isNew) document.getElementById('imp-users-box').style.display = 'none';
+        else document.getElementById('imp-users-box').style.display =
+          (chipsValue('imp-scope') || 'public') === 'private' ? '' : 'none';
+      }
       if (boxId === 'acl-scope') {
         document.getElementById('acl-users-box').style.display = b.dataset.v === 'private' ? '' : 'none';
       }
@@ -597,6 +625,15 @@
     return allUsers;
   }
 
+  function fillBankSelect(sel, keepValue) {
+    if (!sel) return;
+    const cur = keepValue === undefined ? sel.value : keepValue;
+    const first = sel.dataset.placeholder || '';
+    sel.innerHTML = (first ? `<option value="">${first}</option>` : '') +
+      allBanks.map(b => `<option value="${b.id}">${esc(b.name)}（${b.questionCount}题）</option>`).join('');
+    sel.value = cur;
+  }
+
   async function loadBanks() {
     try {
       const r = await getJSON('/api/banks');
@@ -619,11 +656,10 @@
           </td>
         </tr>`).join('') || '<tr><td colspan="7" class="empty">还没有题库，请到「批量导入」上传</td></tr>';
 
-      const sel = document.getElementById('q-bank');
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">全部题库</option>' +
-        allBanks.map(b => `<option value="${b.id}">${esc(b.name)}（${b.questionCount}题）</option>`).join('');
-      sel.value = cur;
+      // 题目管理筛选 / 批量导入追加 / 题目编辑 三处的题库下拉一起刷新
+      fillBankSelect(document.getElementById('q-bank'));
+      fillBankSelect(document.getElementById('imp-bank'));
+      fillBankSelect(document.getElementById('e-bank'));
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -745,6 +781,9 @@
     document.getElementById('e-stem').value = q ? q.stem : '';
     document.getElementById('e-analysis').value = q ? (q.analysis || '') : '';
     document.getElementById('e-answer').value = q ? q.answer : '';
+    // 所属题库：编辑时取题目自身的题库；新增时默认落在当前筛选的题库上
+    const bankSel = document.getElementById('e-bank');
+    fillBankSelect(bankSel, String(q ? (q.bank_id || '') : (document.getElementById('q-bank').value || '')));
     judgeAnswer = q && q.answer === 'F' ? 'F' : 'T';
     const opts = document.querySelectorAll('.e-opt');
     opts.forEach((o, i) => {
@@ -784,7 +823,8 @@
       stem: document.getElementById('e-stem').value.trim(),
       analysis: document.getElementById('e-analysis').value.trim(),
       options: type === 'judge' ? ['正确', '错误'] : options,
-      answer: type === 'judge' ? judgeAnswer : document.getElementById('e-answer').value.trim().toUpperCase()
+      answer: type === 'judge' ? judgeAnswer : document.getElementById('e-answer').value.trim().toUpperCase(),
+      bankId: Number(document.getElementById('e-bank').value) || 0
     };
     try {
       if (editingId) {
@@ -795,7 +835,7 @@
         toast('题目已新增', 'ok');
       }
       closeEdit();
-      loadQuestions();
+      loadQuestions(); loadBanks();
     } catch (ex) { errEl.textContent = ex.message; }
   };
 
@@ -806,23 +846,39 @@
   /* ================= 批量导入 ================= */
 
   /**
-   * 大题库分片导入：
-   * Cloudflare Workers / D1 对单次请求的体积和参数数量都有限制，
+   * 大题库分片导入：单次请求体积不宜过大，
    * 因此按 150 行一片依次提交，并实时显示进度。
    */
   const CHUNK_LINES = 150;
 
+  /**
+   * 判断第一行是不是表头。
+   * 必须按「单元格完全等于列名」判断，不能用整行正则包含 ——
+   * 题干里常出现「答案」等字眼，包含匹配会把第一条真题目当成表头丢掉。
+   */
+  function isHeaderLine(line) {
+    const raw = String(line || '').replace(/^﻿/, '');
+    const cells = (raw.indexOf('|') >= 0 ? raw.split('|') : raw.split(','))
+      .map(s => String(s).replace(/^"|"$/g, '').trim()).filter(Boolean);
+    const exact = (n) => cells.some(c => c === n || c.replace(/\s/g, '') === n);
+    if (exact('题干') || exact('题目') || exact('题目内容') || exact('题号') || exact('序号')) return true;
+    if (exact('答案') || exact('正确答案') || exact('标准答案')) {
+      return exact('题型') || exact('题目类型') || exact('类型') || cells.some(c => /^[A-F]$/.test(c));
+    }
+    return false;
+  }
+
   function splitKeepHeader(text) {
-    const lines = text.replace(/^﻿/, '').split(/\r?\n/);
-    // 找出表头（第一行非空行）
+    const lines = String(text).replace(/^﻿/, '').split(/\r?\n/);
     let headIdx = lines.findIndex(l => l.trim() !== '');
     if (headIdx < 0) return [];
     const header = lines[headIdx];
-    const body = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
-    if (!/题干|题型|答案/.test(header)) return chunkPlain(body);   // 竖线格式，无表头
+    const rest = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
+    // 不是表头 → 第一行本身就是题目，必须带上，不能丢
+    if (!isHeaderLine(header)) return chunkPlain([header, ...rest]);
     const chunks = [];
-    for (let i = 0; i < body.length; i += CHUNK_LINES) {
-      chunks.push([header, ...body.slice(i, i + CHUNK_LINES)].join('\n'));
+    for (let i = 0; i < rest.length; i += CHUNK_LINES) {
+      chunks.push([header, ...rest.slice(i, i + CHUNK_LINES)].join('\n'));
     }
     return chunks;
   }
@@ -849,14 +905,27 @@
 
   const impBtn = document.getElementById('imp-btn');
   bindChips('imp-scope');
+  bindChips('imp-target');
 
   impBtn.onclick = async () => {
     const text = window.__impText || document.getElementById('imp-text').value;
     const resultEl = document.getElementById('imp-result');
     if (!String(text).trim()) { toast('请先粘贴题目内容或上传文件', 'err'); return; }
 
-    const bankName = document.getElementById('imp-name').value.trim();
-    if (!bankName) { toast('请先填写题库名称', 'err'); return; }
+    const target = chipsValue('imp-target') || 'new';
+    let bankId = 0;
+    let bankLabel = '';
+
+    if (target === 'exist') {
+      bankId = Number(document.getElementById('imp-bank').value) || 0;
+      if (!bankId) { toast('请选择要追加到哪个题库', 'err'); return; }
+      const b = allBanks.find(x => x.id === bankId);
+      bankLabel = b ? b.name : ('#' + bankId);
+    } else {
+      const bankName = document.getElementById('imp-name').value.trim();
+      if (!bankName) { toast('请先填写题库名称', 'err'); return; }
+      bankLabel = bankName;
+    }
 
     const chunks = splitKeepHeader(String(text));
     if (!chunks.length) { toast('没有解析到可导入的内容', 'err'); return; }
@@ -864,20 +933,24 @@
     impBtn.disabled = true;
     let ok = 0, bad = [];
     try {
-      // 先建题库（同时确定可见范围和授权用户），后续分片都导入到这个题库
-      const bank = await postJSON('/api/banks', {
-        name: bankName,
-        scope: chipsValue('imp-scope') || 'public',
-        userIds: (chipsValue('imp-scope') || 'public') === 'private' ? checkedIds('imp-users') : []
-      });
+      // 只在「新建题库」时建库（同时确定可见范围和授权用户）；追加模式直接用已有题库
+      if (target !== 'exist') {
+        const bankName = document.getElementById('imp-name').value.trim();
+        const bank = await postJSON('/api/banks', {
+          name: bankName,
+          scope: chipsValue('imp-scope') || 'public',
+          userIds: (chipsValue('imp-scope') || 'public') === 'private' ? checkedIds('imp-users') : []
+        });
+        bankId = bank.id;
+      }
       for (let i = 0; i < chunks.length; i++) {
         impBtn.textContent = `导入中… ${i + 1}/${chunks.length}`;
-        const r = await postJSON('/api/admin/questions/import', { text: chunks[i], bankId: bank.id });
+        const r = await postJSON('/api/admin/questions/import', { text: chunks[i], bankId });
         ok += r.success || 0;
         if (r.failed && r.failed.length) bad = bad.concat(r.failed.map(f => `第 ${f.line} 行：${f.reason}`));
         resultEl.innerHTML = `正在导入：<b>${i + 1}/${chunks.length}</b> 片，已成功 <b style="color:var(--success)">${ok}</b> 题…`;
       }
-      let html = `导入完成：成功 <b style="color:var(--success)">${ok}</b> 条` +
+      let html = `导入完成：成功 <b style="color:var(--success)">${ok}</b> 条 → 题库「${esc(bankLabel)}」` +
         (bad.length ? `，失败 <b style="color:var(--danger)">${bad.length}</b> 条` : '，无失败');
       if (bad.length) html += `<div class="fail">失败明细（行号：原因）：\n` + bad.join('\n') + `</div>`;
       resultEl.innerHTML = html;

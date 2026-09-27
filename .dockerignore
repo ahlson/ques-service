@@ -12,6 +12,6 @@ data
 .env
 .dev.vars
 
-# Cloudflare 相关内容（本镜像为纯 Docker/Node + SQLite 版本，不含 Workers 部署）
-workers/
-docs/
+# 部署与文档（不进镜像）
+docker-compose.yml
+*.md

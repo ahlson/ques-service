@@ -1,0 +1,25 @@
+# Docker Compose 部署：持久化数据放在同目录下的 ./data
+#
+# 用法：
+#   mkdir -p /root/docker/ques-service && cd /root/docker/ques-service
+#   docker compose up -d
+#   docker compose exec ques-service npm run init   # 首次：建表 + 建默认账号
+#
+# 注意：TOKEN_SECRET 务必换成随机值（openssl rand -hex 24）
+
+services:
+  ques-service:
+    image: ahlson/ques-service:v5
+    container_name: ques-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      TOKEN_SECRET: "change-me-generate-with-openssl-rand-hex-24"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

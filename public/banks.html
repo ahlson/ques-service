@@ -90,20 +90,38 @@
   /* ---------- 上传导入（分片） ---------- */
   const CHUNK_LINES = 150;
 
+  /**
+   * 判断第一行是不是表头（必须用「单元格完全等于列名」，不能用整行正则包含，
+   * 否则题干里带「答案」二字时第一条真题会被当成表头丢掉）。
+   */
+  function isHeaderLine(line) {
+    const raw = String(line || '').replace(/^﻿/, '');
+    const cells = (raw.indexOf('|') >= 0 ? raw.split('|') : raw.split(','))
+      .map(s => String(s).replace(/^"|"$/g, '').trim()).filter(Boolean);
+    const exact = (n) => cells.some(c => c === n || c.replace(/\s/g, '') === n);
+    if (exact('题干') || exact('题目') || exact('题目内容') || exact('题号') || exact('序号')) return true;
+    if (exact('答案') || exact('正确答案') || exact('标准答案')) {
+      return exact('题型') || exact('题目类型') || exact('类型') || cells.some(c => /^[A-F]$/.test(c));
+    }
+    return false;
+  }
+
   function splitKeepHeader(text) {
-    const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+    const lines = String(text).replace(/^﻿/, '').split(/\r?\n/);
     let headIdx = lines.findIndex(l => l.trim() !== '');
     if (headIdx < 0) return [];
     const header = lines[headIdx];
-    const body = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
-    if (!/题干|题型|答案/.test(header)) {
-      const chunks = [];
-      for (let i = 0; i < body.length; i += CHUNK_LINES) chunks.push(body.slice(i, i + CHUNK_LINES).join('\n'));
+    const rest = lines.slice(headIdx + 1).filter(l => l.trim() !== '');
+    const chunks = [];
+    // 不是表头 → 第一行本身就是题目，必须带上
+    if (!isHeaderLine(header)) {
+      for (let i = 0; i < [header, ...rest].length; i += CHUNK_LINES) {
+        chunks.push([header, ...rest].slice(i, i + CHUNK_LINES).join('\n'));
+      }
       return chunks;
     }
-    const chunks = [];
-    for (let i = 0; i < body.length; i += CHUNK_LINES) {
-      chunks.push([header, ...body.slice(i, i + CHUNK_LINES)].join('\n'));
+    for (let i = 0; i < rest.length; i += CHUNK_LINES) {
+      chunks.push([header, ...rest.slice(i, i + CHUNK_LINES)].join('\n'));
     }
     return chunks;
   }

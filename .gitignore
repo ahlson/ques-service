@@ -6,11 +6,6 @@ data/
 *.log
 *.tar
 
-workers/node_modules/
-workers/.wrangler/
-workers/dist/
-workers/wrangler.deploy.jsonc
-
 .env
 .dev.vars
 .DS_Store

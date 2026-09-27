@@ -2,14 +2,12 @@
 
 专项刷题 · 模拟考试 · 错题本 · 成绩管理 · 后台题库维护。
 
-同一套代码支持 **两种部署方式**，按需二选一：
+Node + Express + SQLite 单容器应用，两种部署方式按需二选一：
 
-| 部署方式 | 运行环境 | 数据库 | 适合场景 |
-|---|---|---|---|
-| **Cloudflare Workers** | Cloudflare 全球边缘网络 | **D1**（Serverless SQLite） | 免服务器、免运维、公网访问、按量免费额度 |
-| **Docker / Node** | 自建服务器或本机 | **SQLite**（`data/quiz.db`） | 内网部署、数据完全自控、离线可用 |
-
-两种方式的**前端页面、接口、业务逻辑完全一致**（共用 `shared/` 目录）。
+| 部署方式 | 适合场景 |
+|---|---|
+| **Docker Compose**（推荐） | 服务器长期运行，一条命令启停，数据自动持久化 |
+| **本机 Node** | 本地调试、临时演示 |
 
 ---
 
@@ -33,138 +31,103 @@
 服务端也做了拦截：管理员直接调刷题/考试接口会返回 403，绕过页面也不行。
 管理员不能取消自己的管理员权限、不能删除自己，系统至少保留一个管理员。
 
-详细操作见 [docs/CLOUDFLARE-WEB-DEPLOY.md](docs/CLOUDFLARE-WEB-DEPLOY.md) 第 6 步之后的使用说明。
-
 ---
 
 ## 目录结构
 
 ```
 ques-service/
-├── shared/                 # ★ 两种部署方式共用的业务核心
-│   ├── auth.js             #   密码哈希（PBKDF2）+ 签名 Token（HMAC），纯 Web Crypto
+├── shared/                 # 业务核心（与框架无关）
+│   ├── auth.js             #   密码哈希（PBKDF2）+ 签名 Token（HMAC）
 │   ├── questions.js        #   题型规范化、判分、题库 CSV/文本导入解析
-│   └── api-core.js         #   全部接口路由（与框架无关）
-├── public/                 # ★ 共用前端页面
-├── workers/                # Cloudflare Workers 部署
-│   ├── wrangler.jsonc
-│   ├── migrations/0001_init.sql
-│   ├── src/index.js        #   Hono 入口
-│   └── src/db-d1.js        #   D1 适配器
-├── server.js               # Node/Express 入口（Docker 用）
+│   └── api-core.js         #   全部接口路由
+├── public/                 # 前端页面
+├── server.js               # Express 入口
 ├── lib/db-sqlite.js        # SQLite 适配器
-├── schema.sql              # SQLite 建表脚本
-├── scripts/init.js         # 建表 + 创建默认账号（+ 可选导入题库）
+├── schema.sql              # 建表脚本（启动时自动执行，全是 IF NOT EXISTS）
+├── scripts/init.js         # 可选：创建默认账号（+ 导入题库）
+├── docker-compose.yml      # Compose 部署文件
 └── Dockerfile
 ```
 
 ---
 
-## 方式一：部署到 Cloudflare Workers
+## 方式一：Docker Compose 部署（推荐）
 
-两种做法，**二选一**：
-
-- **A. 网页部署（推荐）**：在 Cloudflare 后台连接 GitHub，全程点鼠标，push 即自动部署
-  → 见 **[docs/CLOUDFLARE-WEB-DEPLOY.md](docs/CLOUDFLARE-WEB-DEPLOY.md)**
-- **B. 命令行部署**：下面 1~6 步
-
-> 若用 A，仓库里的 `.github/workflows/deploy.yml` 会因未配置密钥自动跳过，不会冲突。
-
-### 1. 准备
+### 1. 准备目录
 
 ```bash
-cd workers
-npm install
-npx wrangler login          # 浏览器授权 Cloudflare 账号
+mkdir -p /root/docker/ques-service/data
+cd /root/docker/ques-service
 ```
 
-### 2. 创建 D1 数据库
+### 2. 放一份 `docker-compose.yml`
+
+```yaml
+services:
+  ques-service:
+    image: ahlson/ques-service:latest
+    container_name: ques-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      TOKEN_SECRET: 换成一长串随机字符串
+      DB_PATH: /app/data/quiz.db
+    volumes:
+      - ./data:/app/data
+```
+
+> 仓库根目录已附带一份 `docker-compose.yml`，可直接复制过去改。
+
+### 3. 启动
 
 ```bash
-npm run d1:create
+docker compose up -d
+docker compose logs -f        # 看启动日志
+docker compose ps             # 看运行状态
 ```
 
-命令会输出一段 `database_id`，把它填回 `workers/wrangler.jsonc` 的 `database_id` 字段里。
+数据库落在 `./data/quiz.db`，容器重建、换镜像都不会丢。
+升级只需 `docker compose pull && docker compose up -d`。
 
-> Database ID 只是资源编号，不是密钥（读写 D1 仍需 Cloudflare 账号或 API Token），写进仓库没有安全问题。
-> 若确实不想提交到仓库，可用 `D1_DATABASE_ID=<id> npm run gen:config` 生成不入库的
-> `wrangler.deploy.jsonc`，再用 `npm run deploy:ci` 部署，详见 `docs/CLOUDFLARE-WEB-DEPLOY.md` 第 2 步做法 B。
+### 4. 初始化
 
-### 3. 建表
-
-```bash
-npm run d1:migrate          # 对线上 D1 执行 migrations/0001_init.sql
-```
-
-### 4. 设置 Token 密钥（重要）
-
-```bash
-npm run secret
-# 提示输入时，给一个足够长的随机字符串
-```
-
-### 5. 部署
-
-```bash
-npm run deploy
-```
-
-完成后会给出访问地址，例如 `https://ques-service.<你的子域>.workers.dev`。
-
-### 6. 初始化 + 导入题库
-
-1. 打开站点 → 系统检测到还没有账号，会显示「**初始化**」页面，创建第一个账号（即管理员）。
-2. 登录后进入「**管理后台 → 批量导入**」，上传题库 CSV，点「开始导入」。
-
-> Workers 单次请求有体积与参数上限，前端会自动把大文件按 150 行分片上传并显示进度，1120 题约 8 片即可导完。
+1. 打开 `http://服务器IP:3000` → 系统检测到还没有账号，会显示「**初始化**」页面，创建第一个账号（即管理员）。
+2. 登录后进入「**管理后台 → 批量导入**」上传题库 CSV。
 
 ---
 
-## 方式二：Docker / Node 部署
-
-### Docker
-
-```bash
-# 构建（在仓库根目录执行）
-docker build -t ques-service .
-
-# 运行（务必挂载数据卷，否则重建容器会丢数据）
-docker volume create ques-data
-docker run -d --name ques-service --restart unless-stopped \
-  -p 3000:3000 \
-  -e TOKEN_SECRET=换成你的随机字符串 \
-  -v ques-data:/app/data \
-  ques-service
-
-# 首次建表 + 创建默认账号
-docker exec ques-service npm run init
-```
-
-默认账号：`admin / admin123`（管理员）、`user / user123`（学员）。
-**登录后请在管理后台改密码或尽快导入题库。**
-
-访问：`http://服务器IP:3000`
-
-### 本机 Node
+## 方式二：本机 Node 部署
 
 ```bash
 npm install
-npm run init        # 建表 + 默认账号（可选：npm run init -- --csv 题库.csv）
+npm run init        # 可选：建表 + 创建默认账号 admin/admin123、user/user123
 npm start
 ```
+
+访问 `http://localhost:3000`。数据库默认在 `./data/quiz.db`。
+
+### 发布 Docker 镜像
+
+```bash
+docker build -t ques-service .
+```
+
+或推送到 Docker Hub：GitHub 仓库 → Actions → **Docker image** → Run workflow → 填标签（如 `v6`）。
 
 ---
 
 ## 题库导入说明
 
-**题目不再随仓库附带，也不再由初始化脚本写入**，全部改为登录后在网页导入，Cloudflare 与 Docker 两种部署方式操作完全一致。
+**题目不随仓库附带**，全部改为登录后在网页导入。
 
-**一次导入 = 一个题库。** 导入时给题库起个名字，之后就能按整个题库授权给指定用户，也可以单独删除。
+**一次导入 = 一个题库。** 也可以把新题目**追加到已有题库**（导入时选「追加到已有题库」）。
 
-- **管理员**：管理后台 → 批量导入（填题库名 → 选「全体可见」或勾选指定用户 → 上传文件）
-- **普通用户**：我的题库 → 上传我的题库（自动成为私库，只有自己和管理员可见）
+- **管理员**：管理后台 → 批量导入
+- **普通用户**：我的题库 → 上传我的题库（自动成为私库）
 
-管理后台 → 批量导入，支持两种格式，系统自动识别：
+支持两种格式，系统自动识别：
 
 ### 格式一：模板 CSV（推荐）
 
@@ -179,6 +142,8 @@ npm start
 - 否则按 `题型` 列的 **单选题 / 多选题** 处理，答案为字母（多选如 `ABCD`）
 - E 列可留空；多选题答案多个字母自动升序去重
 - 表头顺序可不同，按列名定位
+- **没有表头也能导**：按「题干、A、B、C、D、E、答案、难度、题型」默认列序读取
+- 从 Excel 直接复制（Tab 分隔）也能识别
 
 ### 格式二：竖线分隔文本
 
@@ -189,6 +154,11 @@ npm start
 ```
 
 以 `#` 开头的行会被忽略；解析可省略；选项个数 2~6 均可，系统会自动定位答案列。
+
+### 题目管理
+
+管理后台 → 题目管理 → 「+ 新增题目」可单题录入，并直接指定所属题库；
+已有题目也可编辑时改题库。
 
 ### 重新导入前
 
@@ -213,27 +183,32 @@ npm start
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `TOKEN_SECRET` | 登录 Token 签名密钥，**生产环境必须修改** | `please-change-this-secret` |
-| `DB_PATH` | SQLite 文件路径（仅 Docker/Node） | `./data/quiz.db` |
-| `PORT` | 监听端口（仅 Docker/Node） | `3000` |
-
-Workers 版本用 `wrangler secret put TOKEN_SECRET` 设置，不要写在配置文件里。
+| `DB_PATH` | SQLite 文件路径 | `./data/quiz.db` |
+| `PORT` | 监听端口 | `3000` |
 
 ---
 
 ## 从旧版本升级
 
-旧版（v1~v3）用 Node `scrypt` 存储密码，新版统一为 Web Crypto 的 PBKDF2。
-Docker 版本内置兼容：用旧密码登录时会自动校验成功并把哈希升级为 PBKDF2，无需手动重置。
+旧版（v1~v3）用 Node `scrypt` 存储密码，新版统一为 PBKDF2。
+内置兼容：用旧密码登录时会自动校验成功并把哈希升级为 PBKDF2，无需手动重置。
+
+数据库结构同样自动升级：启动时执行 `schema.sql`（全 `IF NOT EXISTS`，对老库无副作用），
+再按需补 `questions.bank_id` 等新列。**老库直接挂上新镜像即可，不用手动迁移。**
 
 ---
 
 ## 常见问题
 
 **Q：页面能打开但提示「请先登录」/ 接口 500？**
-A：Workers 版本先确认 D1 已执行 migrations（`npm run d1:migrate`），且 `database_id` 填写正确。
+A：看容器日志 `docker compose logs`。多数是 `TOKEN_SECRET` 没改或数据目录没写权限。
 
-**Q：Docker 重建容器后数据没了？**
-A：说明没挂数据卷。请用 `-v ques-data:/app/data`，或先 `docker cp ques-service:/app/data/quiz.db ./quiz.db.bak` 备份。
+**Q：重建容器后数据没了？**
+A：说明没挂数据卷。请确保 compose 里有 `./data:/app/data`。
+
+**Q：导入时第一行不见了？**
+A：v6 已修复。原因是表头判断用了整行包含匹配，题干里带「答案」二字时第一条真题会被误判成表头丢掉；
+现在改为「单元格完全等于列名」判断，无表头的内容也会按默认列序解析。
 
 **Q：怎么给别人开通账号？**
 A：系统不开放注册。管理员在「管理后台 → 用户管理 → + 新增用户」创建，设置初始密码后告知对方即可。

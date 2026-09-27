@@ -2,8 +2,8 @@ name: Docker image
 
 # 构建纯 Docker 镜像并推送到 Docker Hub
 # 触发方式：
-#   1) 手动：Actions → Docker image → Run workflow（可填标签，默认 v5）
-#   2) 打 tag：git tag v5 && git push --tags
+#   1) 手动：Actions → Docker image → Run workflow（可填标签，默认 v6）
+#   2) 打 tag：git tag v6 && git push --tags
 #
 # 需要的仓库 Secret：DOCKERHUB_TOKEN（Docker Hub 的 Access Token，不是登录密码）
 
@@ -13,7 +13,7 @@ on:
       tag:
         description: '镜像标签'
         required: true
-        default: 'v5'
+        default: 'v6'
   push:
     tags:
       - 'v*'

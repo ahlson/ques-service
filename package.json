@@ -1,6 +1,6 @@
 {
   "name": "ques-service",
-  "version": "4.0.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
   "description": "在线答题系统：专项刷题 + 模拟考试 + 后台管理（Docker/Node + SQLite）",

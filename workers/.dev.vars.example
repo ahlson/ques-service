@@ -1,3 +1,0 @@
-# 复制为 .dev.vars 后填写（.dev.vars 已被 .gitignore 忽略，不会被提交）
-# 生产环境请用：npx wrangler secret put TOKEN_SECRET
-TOKEN_SECRET=please-change-this-secret
