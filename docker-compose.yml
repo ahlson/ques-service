@@ -9,7 +9,7 @@
 
 services:
   ques-service:
-    image: ahlson/ques-service:v5
+    image: ahlson/ques-service:v6
     container_name: ques-service
     restart: unless-stopped
     ports:
